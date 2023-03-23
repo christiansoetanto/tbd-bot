@@ -5,11 +5,13 @@ import "time"
 type FeatureKey string
 
 const (
-	FeatureKeyPing         string = "ping"
-	FeatureKeySDVerify     string = "sdverify"
-	FeatureKeyCMVerify     string = "cmverify"
-	FeatureKeyCMPoll       string = "cmpoll"
-	FeatureKeyCalendarCron string = "calendar_cron"
+	FeatureKeyPing          string = "ping"
+	FeatureKeySDVerify      string = "sdverify"
+	FeatureKeySDQuestionOne string = "sdquestionone"
+	FeatureKeyCMVerify      string = "cmverify"
+	FeatureKeyCMQuestionOne string = "cmquestionone"
+	FeatureKeyCMPoll        string = "cmpoll"
+	FeatureKeyCalendarCron  string = "calendar_cron"
 )
 
 const (

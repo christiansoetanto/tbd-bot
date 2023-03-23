@@ -7,11 +7,12 @@ import (
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/logv2"
 	"github.com/christiansoetanto/tbd-bot/util"
+	"regexp"
 	"strings"
 	"time"
 )
 
-func (h *handler) keywordDetectionHandler(ctx context.Context) func(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (h *handler) vettingQuestioningKeywordDetectionHandler(ctx context.Context) func(s *discordgo.Session, m *discordgo.MessageCreate) {
 	ctx = logv2.InitRequestContext(ctx)
 	ctx = logv2.InitFuncContext(ctx)
 	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -52,6 +53,68 @@ func (h *handler) keywordDetectionHandler(ctx context.Context) func(s *discordgo
 			}
 			logv2.Debug(ctx, logv2.Info, fmt.Sprintf("Done deleting message id %s", m.ID))
 		}
+	}
+}
+
+func detectVettingResponse(ctx context.Context, input string, setting config.InvalidVettingResponseSetting) bool {
+	for _, flag := range setting.VettingResponseKeywordFlags {
+		if strings.Contains(input, flag) {
+			return true
+		}
+	}
+	reg, err := regexp.Compile(".*2.*3.*4.*5.*6.*")
+	if err != nil {
+		logv2.Error(ctx, err)
+		return false
+	}
+	return reg.MatchString(input)
+}
+
+func sanitizeVettingResponse(ctx context.Context, input string) string {
+	var regex, err = regexp.Compile("(<(@|@&|#)(.*)?>)")
+	if err != nil {
+		return input
+	}
+	input = regex.ReplaceAllLiteralString(input, "")
+	input = strings.ReplaceAll(util.ToAlphanum(ctx, input), "latinrite", "")
+	return input
+}
+
+func isValidVettingResponse(ctx context.Context, input string, setting config.InvalidVettingResponseSetting) bool {
+	input = sanitizeVettingResponse(ctx, input)
+	if detectVettingResponse(ctx, input, setting) && !strings.Contains(input, setting.Keyword) {
+		return false
+	}
+	return true
+}
+
+func (h *handler) invalidVettingResponseHandler(ctx context.Context) func(s *discordgo.Session, m *discordgo.MessageCreate) {
+	ctx = logv2.InitRequestContext(ctx)
+	ctx = logv2.InitFuncContext(ctx)
+	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		if m.Author.ID == s.State.User.ID {
+			return
+		}
+		cfg, ok := h.Config.GuildConfig[config.GuildId(m.GuildID)]
+		if !ok {
+			return
+		}
+		setting := cfg.InvalidVettingResponseSetting
+		channelId := setting.ChannelId
+		if !setting.Enabled ||
+			channelId != m.ChannelID {
+			return
+		}
+
+		if !isValidVettingResponse(ctx, m.Content, setting) {
+			content := fmt.Sprintf("Hey <@%s>! It looks like you missed question 1. Please re-read the <#%s> again, we assure you that the code is in there. Thank you for your understanding.", m.Author.ID, cfg.Channel.RulesVetting)
+			_, err := s.ChannelMessageSendEmbedReply(channelId, util.EmbedBuilder("", content), m.Reference())
+			if err != nil {
+				logv2.Error(ctx, err)
+				return
+			}
+		}
+
 	}
 }
 

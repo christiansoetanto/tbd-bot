@@ -9,25 +9,7 @@ import (
 	"github.com/christiansoetanto/tbd-bot/domain"
 	"github.com/christiansoetanto/tbd-bot/logv2"
 	"github.com/christiansoetanto/tbd-bot/util"
-	"github.com/rs/xid"
-	"strings"
 )
-
-func generateRandomPollId() string {
-	return xid.New().String()
-}
-
-const pollOptionValueTemplate = "%s:%s"
-
-func buildOptionValue(pollId string, value string) string {
-	return fmt.Sprintf(pollOptionValueTemplate, pollId, value)
-}
-func parseOptionValue(value string) (pollId string, optionValue string) {
-	split := strings.Split(value, ":")
-	pollId = split[0]
-	optionValue = split[1]
-	return
-}
 
 func (h *handler) cmPollVoteHandlerFunc(ctx context.Context) func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
 	ctx = logv2.InitRequestContext(ctx)

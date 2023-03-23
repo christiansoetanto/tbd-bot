@@ -14,10 +14,12 @@ type componentHandler map[string]func(s *discordgo.Session, i *discordgo.Interac
 
 func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.ApplicationCommand, commandHandler) {
 	commandHandlers := commandHandler{
-		domain.FeatureKeyPing:     h.pingCommandHandlerFunc(ctx),
-		domain.FeatureKeySDVerify: h.sdVerifyCommandHandlerFunc(ctx),
-		domain.FeatureKeyCMVerify: h.cmVerifyCommandHandlerFunc(ctx),
-		domain.FeatureKeyCMPoll:   h.cmPollCommandHandlerFunc(ctx),
+		domain.FeatureKeyPing:          h.pingCommandHandlerFunc(ctx),
+		domain.FeatureKeySDVerify:      h.sdVerifyCommandHandlerFunc(ctx),
+		domain.FeatureKeySDQuestionOne: h.sdQuestionOneCommandHandlerFunc(ctx),
+		domain.FeatureKeyCMQuestionOne: h.cmQuestionOneCommandHandlerFunc(ctx),
+		domain.FeatureKeyCMVerify:      h.cmVerifyCommandHandlerFunc(ctx),
+		domain.FeatureKeyCMPoll:        h.cmPollCommandHandlerFunc(ctx),
 	}
 	applicationCommands := []*discordgo.ApplicationCommand{
 		{
@@ -153,6 +155,30 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 					Name:        "option-10",
 					Description: "The tenth option they can choose",
 					Required:    false,
+				},
+			},
+		},
+		{
+			Name:        domain.FeatureKeySDQuestionOne,
+			Description: "alert user that they missed question one answer",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "user to verify",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        domain.FeatureKeyCMQuestionOne,
+			Description: "alert user that they missed question one answer",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "user to verify",
+					Required:    true,
 				},
 			},
 		},

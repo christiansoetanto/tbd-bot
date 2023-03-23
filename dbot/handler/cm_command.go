@@ -205,6 +205,95 @@ func (h *handler) cmPollCommandHandlerFunc(ctx context.Context) func(s *discordg
 	}
 }
 
+func (h *handler) cmQuestionOneCommandHandlerFunc(ctx context.Context) func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	ctx = logv2.InitRequestContext(ctx)
+	ctx = logv2.InitFuncContext(ctx)
+	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Flags: discordgo.MessageFlagsEphemeral,
+			},
+		})
+		if err != nil {
+			logv2.Error(ctx, err)
+			return err
+		}
+
+		guild, ok := h.Config.GuildConfig[config.GuildId(i.GuildID)]
+		if !ok {
+			e := errors.New("guild is not found")
+			logv2.Error(ctx, e, i)
+			reportInteractionError(ctx, s, i.Interaction)
+			return e
+		}
+		if !guild.CMQuestionOneSetting.Enabled {
+			logv2.Debug(ctx, logv2.Info, "CMQuestionOne is not enabled")
+			return nil
+		}
+
+		if !isMod(ctx, s, guild, i.Member.User.ID) {
+			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Embeds: util.EmbedsBuilder("", fmt.Sprintf("You are not allowed to use this.")),
+			})
+			if err != nil {
+				logv2.Error(ctx, err)
+				return err
+			}
+			return nil
+		}
+
+		vqChannelId := guild.CMQuestionOneSetting.VettingQuestioningChannelId
+		options := i.ApplicationCommandData().Options
+		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
+		for _, opt := range options {
+			optionMap[opt.Name] = opt
+		}
+
+		userOpt, ok := optionMap["user"]
+		if !ok {
+			e := errors.New("user option is not found")
+			logv2.Error(ctx, e, options)
+			reportInteractionError(ctx, s, i.Interaction)
+			return e
+		}
+		user := userOpt.UserValue(s)
+
+		err = s.GuildMemberRoleAdd(i.GuildID, user.ID, guild.Role.VettingQuestioning)
+		if err != nil {
+			logv2.Error(ctx, err, fmt.Sprintf("failed to add role %s to user %s", guild.Role.VettingQuestioning, user.ID))
+			reportInteractionError(ctx, s, i.Interaction)
+			return err
+		}
+
+		_, err = s.ChannelMessageSendComplex(vqChannelId, &discordgo.MessageSend{
+			Embed: util.EmbedBuilder(
+				"",
+				fmt.Sprintf("Hey <@%s>! It looks like you missed question 1. Please re-read the <#%s> again, we assure you that the code is in there. Thank you!", user.ID, guild.Channel.RulesVetting),
+			),
+		})
+
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction)
+			return err
+		}
+
+		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Embeds: util.EmbedsBuilder("", fmt.Sprintf("Done. Please check <#%s>.", vqChannelId)),
+		})
+
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction)
+			return err
+		}
+
+		logv2.Debug(ctx, logv2.Info, logv2.Finish)
+		return nil
+	}
+}
+
 func parseOptions(options []*discordgo.ApplicationCommandInteractionDataOption) (question string, pollOptions []string) {
 	optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
 	for _, opt := range options {

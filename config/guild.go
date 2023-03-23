@@ -5,20 +5,49 @@ import (
 )
 
 type GuildConfig struct {
-	GuildId                                GuildId
-	GuildName                              string
-	Channel                                Channel
-	Role                                   Role
-	Moderator                              Moderator
-	Reaction                               Reaction
-	RegisteredFeature                      RegisteredFeature
-	DetectVettingQuestioningKeywordSetting DetectVettingQuestioningKeywordSetting
-	SDVerifySetting                        SDVerifySetting
-	CMVerifySetting                        CMVerifySetting
-	QuestionDiscussionMoverSetting         QuestionDiscussionMoverSetting
-	CMQuestionLimiterSetting               CMQuestionLimiterSetting
-}
+	GuildId           GuildId
+	GuildName         string
+	Channel           Channel
+	Role              Role
+	Moderator         Moderator
+	Reaction          Reaction
+	RegisteredFeature RegisteredFeature
 
+	//start common
+
+	DetectVettingQuestioningKeywordSetting DetectVettingQuestioningKeywordSetting
+	QuestionDiscussionMoverSetting         QuestionDiscussionMoverSetting
+	InvalidVettingResponseSetting          InvalidVettingResponseSetting
+
+	//end common
+
+	// ==========
+
+	//start SD
+
+	SDVerifySetting      SDVerifySetting
+	SDQuestionOneSetting SDQuestionOneSetting
+
+	//end SD
+
+	// =============================
+
+	//start CM
+
+	CMQuestionOneSetting     CMQuestionOneSetting
+	CMVerifySetting          CMVerifySetting
+	CMQuestionLimiterSetting CMQuestionLimiterSetting
+
+	//end CM
+}
+type CMQuestionOneSetting struct {
+	Enabled                     bool   `json:"enabled,omitempty"`
+	VettingQuestioningChannelId string `json:"vetting_questioning_channel_id,omitempty"`
+}
+type SDQuestionOneSetting struct {
+	Enabled                     bool   `json:"enabled,omitempty"`
+	VettingQuestioningChannelId string `json:"vetting_questioning_channel_id,omitempty"`
+}
 type CMQuestionLimiterSetting struct {
 	Enabled                        bool            `json:"enabled,omitempty"`
 	ChannelId                      string          `json:"channel_id,omitempty"`
@@ -60,6 +89,13 @@ type DetectVettingQuestioningKeywordSetting struct {
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
 }
+type InvalidVettingResponseSetting struct {
+	Enabled                     bool     `json:"enabled,omitempty"`
+	Keyword                     string   `json:"keyword,omitempty"`
+	ChannelId                   string   `json:"channel_id,omitempty"`
+	VettingResponseKeywordFlags []string `json:"vetting_response_keyword_flags,omitempty"`
+}
+
 type Channel struct {
 	GeneralDiscussion            string `json:"general_discussion,omitempty"`
 	ReactionRoles                string `json:"reaction_roles,omitempty"`
@@ -70,7 +106,6 @@ type Channel struct {
 	AnsweredQuestions            string `json:"answered_questions,omitempty"`
 	FAQ                          string `json:"faq,omitempty"`
 	Responses                    string `json:"responses,omitempty"`
-	VettingQuestioning           string `json:"vetting_questioning,omitempty"`
 	RulesVetting                 string `json:"rules_vetting,omitempty"`
 	LiturgicalCalendarDiscussion string `json:"liturgical_calendar_discussion,omitempty"`
 	BotTesting                   string `json:"bot_testing,omitempty"`
@@ -116,6 +151,7 @@ var devServusDeiGuild = GuildConfig{
 	GuildName: "Dev - Servus Dei",
 	Channel: Channel{
 		LiturgicalCalendarDiscussion: "1013780907192221757",
+		RulesVetting:                 "1013780880591954002",
 	},
 	Role: Role{
 		Vetting:            []string{"974632148952809482"},
@@ -127,9 +163,10 @@ var devServusDeiGuild = GuildConfig{
 	Moderator: nil,
 	Reaction:  Reaction{},
 	RegisteredFeature: map[string]bool{
-		domain.FeatureKeyPing:         true,
-		domain.FeatureKeySDVerify:     true,
-		domain.FeatureKeyCalendarCron: true,
+		domain.FeatureKeyPing:          true,
+		domain.FeatureKeySDVerify:      true,
+		domain.FeatureKeySDQuestionOne: true,
+		domain.FeatureKeyCalendarCron:  true,
 	},
 	DetectVettingQuestioningKeywordSetting: DetectVettingQuestioningKeywordSetting{
 		Enabled:     true,
@@ -169,6 +206,16 @@ var devServusDeiGuild = GuildConfig{
 		},
 		TriggerReactionId: "1013782200052887683",
 	},
+	SDQuestionOneSetting: SDQuestionOneSetting{
+		Enabled:                     true,
+		VettingQuestioningChannelId: "1013780704330526834",
+	},
+	InvalidVettingResponseSetting: InvalidVettingResponseSetting{
+		Enabled:                     true,
+		Keyword:                     "keyword",
+		ChannelId:                   "1013780662798528592",
+		VettingResponseKeywordFlags: []string{"inibajakan"},
+	},
 }
 
 var devCapitalMindsetGuild = GuildConfig{
@@ -184,8 +231,7 @@ var devCapitalMindsetGuild = GuildConfig{
 		AnsweredQuestions:            "",
 		FAQ:                          "",
 		Responses:                    "",
-		VettingQuestioning:           "",
-		RulesVetting:                 "",
+		RulesVetting:                 "1088360872558211164",
 		LiturgicalCalendarDiscussion: "",
 		BotTesting:                   "",
 	},
@@ -209,9 +255,10 @@ var devCapitalMindsetGuild = GuildConfig{
 		Gold: "<:gold:1088346927801843752>",
 	},
 	RegisteredFeature: map[string]bool{
-		domain.FeatureKeyPing:     true,
-		domain.FeatureKeyCMVerify: true,
-		domain.FeatureKeyCMPoll:   true,
+		domain.FeatureKeyPing:          true,
+		domain.FeatureKeyCMVerify:      true,
+		domain.FeatureKeyCMPoll:        true,
+		domain.FeatureKeyCMQuestionOne: true,
 	},
 	DetectVettingQuestioningKeywordSetting: DetectVettingQuestioningKeywordSetting{
 		Enabled:     true,
@@ -249,5 +296,15 @@ var devCapitalMindsetGuild = GuildConfig{
 		ChannelId:                      "1078336196373123194",
 		UnlimitedRoleIds:               map[string]bool{"1078336615958708384z": true},
 		QuestionLimitDurationInMinutes: 1,
+	},
+	CMQuestionOneSetting: CMQuestionOneSetting{
+		Enabled:                     true,
+		VettingQuestioningChannelId: "1078237386615562253",
+	},
+	InvalidVettingResponseSetting: InvalidVettingResponseSetting{
+		Enabled:                     true,
+		Keyword:                     "stong",
+		ChannelId:                   "1088370411470860288",
+		VettingResponseKeywordFlags: []string{"inibajakan"},
 	},
 }

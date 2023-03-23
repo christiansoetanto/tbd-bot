@@ -41,10 +41,11 @@ func (h *handler) GetHandlers(ctx context.Context) []interface{} {
 	return []interface{}{
 		h.readyHandler(ctx),
 		h.guildCreateHandler(ctx),
-		h.keywordDetectionHandler(ctx),
+		h.vettingQuestioningKeywordDetectionHandler(ctx),
 		h.buildCommandHandler(ctx),
 		h.buildComponentHandler(ctx),
 		h.questionMoverMessageReactionAddHandler(ctx),
 		h.cmQuestionLimiterHandler(ctx),
+		h.invalidVettingResponseHandler(ctx),
 	}
 }
