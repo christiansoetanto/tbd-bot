@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/database"
+	"github.com/christiansoetanto/tbd-bot/domain"
 	"github.com/christiansoetanto/tbd-bot/provider/dbms"
 	"sync"
 )
@@ -20,6 +21,10 @@ type Resource struct {
 
 type Provider interface {
 	HelloWorld(ctx context.Context) error
+	UpsertLatestQuestion(ctx context.Context, q domain.Question) error
+	GetLatestQuestion(ctx context.Context, userId string, guildId string) (domain.Question, error)
+	GetPoll(ctx context.Context, pollId string) (domain.Poll, error)
+	UpsertPoll(ctx context.Context, poll domain.Poll) error
 }
 
 var obj Provider

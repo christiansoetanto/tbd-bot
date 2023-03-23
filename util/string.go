@@ -38,3 +38,14 @@ func InterfaceToJSON(data interface{}) (result string) {
 	}
 	return
 }
+
+func HasDuplicateItem(input []string) bool {
+	m := make(map[string]bool)
+	for _, item := range input {
+		if m[item] {
+			return true
+		}
+		m[item] = true
+	}
+	return false
+}

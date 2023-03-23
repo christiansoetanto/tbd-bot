@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"github.com/bwmarrin/discordgo"
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/provider"
 	"sync"
@@ -19,6 +20,7 @@ type Resource struct {
 
 type Handler interface {
 	GetHandlers(ctx context.Context) []interface{}
+	GetCommandHandlers(ctx context.Context) ([]*discordgo.ApplicationCommand, commandHandler)
 }
 
 var obj Handler
@@ -40,5 +42,9 @@ func (h *handler) GetHandlers(ctx context.Context) []interface{} {
 		h.readyHandler(ctx),
 		h.guildCreateHandler(ctx),
 		h.keywordDetectionHandler(ctx),
+		h.buildCommandHandler(ctx),
+		h.buildComponentHandler(ctx),
+		h.questionMoverMessageReactionAddHandler(ctx),
+		h.cmQuestionLimiterHandler(ctx),
 	}
 }

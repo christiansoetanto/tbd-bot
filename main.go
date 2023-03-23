@@ -57,12 +57,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	newReqCtx := logv2.InitRequestContext(ctx)
-	newReqCtx = logv2.InitFuncContext(newReqCtx)
-	err = prov.HelloWorld(newReqCtx)
-	if err != nil {
-		return
-	}
 	defer func() {
 		e := dbotObject.CloseDiscordgoConn()
 		if e != nil {
@@ -73,6 +67,7 @@ func main() {
 		database.Close(ctx)
 	}()
 
+	//prov.HelloWorld(ctx)
 	// Wait here until CTRL-C or other term signal is received.
 	logv2.Debug(ctx, logv2.Info, "Session is now running.  Press CTRL-C to exit.")
 	sc := make(chan os.Signal, 1)

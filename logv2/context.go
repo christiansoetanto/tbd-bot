@@ -6,12 +6,15 @@ import (
 	"github.com/rs/xid"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const (
-	funcKey ctxKey = "func"
-	flowKey ctxKey = "flow"
-	reqId   ctxKey = "req_id"
+	funcKey   ctxKey = "func"
+	flowKey   ctxKey = "flow"
+	reqId     ctxKey = "req_id"
+	timeStart ctxKey = "time_start"
+	timeSpent ctxKey = "time_spent"
 )
 
 type ctxKey string
@@ -45,13 +48,29 @@ func getCtxFlow(ctx context.Context) (flow string) {
 func setCtxReqId(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, reqId, id)
 }
-func getCtxReqId(ctx context.Context) (id string) {
+func GetCtxReqId(ctx context.Context) (id string) {
 	if _, ok := ctx.Value(reqId).(string); ok {
 		id = ctx.Value(reqId).(string)
 	}
 	return
 }
 
+func setCtxTimeStart(ctx context.Context) context.Context {
+	return context.WithValue(ctx, timeStart, time.Now().Format(time.RFC3339))
+}
+
+func getCtxTimeSpent(ctx context.Context) (ts int64) {
+	if _, ok := ctx.Value(timeStart).(string); ok {
+		tStartStr := ctx.Value(timeStart).(string)
+		tStart, err := time.Parse(time.RFC3339, tStartStr)
+		if err != nil {
+			Error(ctx, err, tStartStr)
+			return
+		}
+		ts = time.Since(tStart).Milliseconds()
+	}
+	return
+}
 func getCallerFuncName() string {
 	funcName := ""
 	rc, _, _, ok := runtime.Caller(2)
@@ -75,5 +94,6 @@ func InitFuncContext(ctx context.Context) context.Context {
 
 func InitRequestContext(ctx context.Context) context.Context {
 	ctx = setCtxReqId(ctx, xid.New().String())
+	ctx = setCtxTimeStart(ctx)
 	return ctx
 }

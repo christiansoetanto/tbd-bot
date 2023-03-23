@@ -1,11 +1,10 @@
 package config
 
 import (
-	"github.com/christiansoetanto/tbd-bot/domain"
 	"os"
 )
 
-type RegisteredFeature map[domain.FeatureKey]bool
+type RegisteredFeature map[string]bool
 type AppConfig struct {
 	DevMode                    bool
 	FirebaseServiceAccountJson string
@@ -23,10 +22,9 @@ func Init(devMode bool) Config {
 	}
 	guildCfg := make(map[GuildId]GuildConfig)
 	if devMode {
-		guildCfg[devGuild.GuildId] = devGuild
+		guildCfg[devServusDeiGuild.GuildId] = devServusDeiGuild
+		guildCfg[devCapitalMindsetGuild.GuildId] = devCapitalMindsetGuild
 	} else {
-		//TODO ganti ke SD
-		guildCfg[devGuild.GuildId] = devGuild
 	}
 	return Config{
 		AppConfig:   appCfg,

@@ -5,6 +5,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/dbot/handler"
+	"github.com/robfig/cron/v3"
+	"log"
 	"sync"
 )
 
@@ -49,8 +51,8 @@ func (u *usecase) Init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	//u.registerSlashCommand()
-	//u.LoadAllCronJobs()
+	u.registerSlashCommand()
+	u.loadAllCronJobs(ctx)
 
 	return nil
 }
@@ -66,4 +68,30 @@ func (u *usecase) initHandlers(ctx context.Context) {
 	for _, h := range u.Handler.GetHandlers(ctx) {
 		u.Session.AddHandler(h)
 	}
+}
+func (u *usecase) registerSlashCommand() {
+	commands, _ := u.Handler.GetCommandHandlers(context.Background())
+	for guildId, guild := range u.Config.GuildConfig {
+		var guildCommands []*discordgo.ApplicationCommand
+		for _, command := range commands {
+			if guild.RegisteredFeature[command.Name] {
+				guildCommands = append(guildCommands, command)
+			}
+		}
+		_, err := u.Session.ApplicationCommandBulkOverwrite(u.Session.State.User.ID, string(guildId), guildCommands)
+		if err != nil {
+			log.Fatalf("Cannot create command: %v", err)
+		}
+	}
+}
+
+func (u *usecase) loadAllCronJobs(ctx context.Context) {
+	const DailyCron = "@daily"
+	const Every5SecondCron = "@every 5s"
+	c := cron.New()
+	_, err := c.AddFunc(DailyCron, u.liturgicalCalendarCronJob(ctx))
+	if err != nil {
+		return
+	}
+	c.Start()
 }

@@ -39,8 +39,9 @@ func Init(cfg config.AppConfig) {
 }
 
 type ContextMetadata struct {
-	Func string `json:"func,omitempty"`
-	Flow string `json:"flow,omitempty"`
+	Func      string `json:"func,omitempty"`
+	Flow      string `json:"flow,omitempty"`
+	TimeSpent int64  `json:"time_spent,omitempty"`
 }
 
 type DebugType string
@@ -51,11 +52,13 @@ const (
 	Response DebugType = "Response"
 	Request  DebugType = "Request"
 )
+const Finish string = "Finished process without error"
 
 func withContext(ctx context.Context) ContextMetadata {
 	return ContextMetadata{
-		Func: getCtxFunc(ctx),
-		Flow: getCtxFlow(ctx),
+		Func:      getCtxFunc(ctx),
+		Flow:      getCtxFlow(ctx),
+		TimeSpent: getCtxTimeSpent(ctx),
 	}
 }
 
@@ -67,7 +70,7 @@ func Debug(ctx context.Context, debugType DebugType, data interface{}, additiona
 		msg = util.InterfaceToJSON(data)
 	}
 	logger.Debug().
-		Str("req_id", getCtxReqId(ctx)).
+		Str("req_id", GetCtxReqId(ctx)).
 		Interface("metadata", withContext(ctx)).
 		Str("debug_type", string(debugType)).
 		Msg(msg)
@@ -78,7 +81,7 @@ func Error(ctx context.Context, err error, data ...interface{}) {
 		msg = util.InterfaceToJSON(data)
 	}
 	logger.Error().
-		Str("req_id", getCtxReqId(ctx)).
+		Str("req_id", GetCtxReqId(ctx)).
 		Interface("metadata", withContext(ctx)).
 		Err(err).
 		Msg(msg)

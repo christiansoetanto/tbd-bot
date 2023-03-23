@@ -1,6 +1,8 @@
 package util
 
-import "github.com/bwmarrin/discordgo"
+import (
+	"github.com/bwmarrin/discordgo"
+)
 
 type ImageUrl string
 
@@ -10,6 +12,44 @@ const (
 	GoldenYellowColor = 16769280
 )
 
+var sdCounter = 0
+var cmCounter = 0
+
+func randomWelcomeImage(imgs []string, counter int) string {
+	if counter >= len(imgs) {
+		counter = 0
+	}
+	img := imgs[counter]
+	counter++
+	return img
+}
+func RandomSDWelcomeImage() string {
+	welcomeImageURL := "https://cdn.discordapp.com/attachments/751174152588623912/976921809607880714/You_Doodle_2022-05-19T18_58_15Z.jpg"
+	welcomeImage2URL := "https://media.discordapp.net/attachments/751174152588623912/975368929008558130/Screenshot_2022-05-11_at_11.42.51_PM.png"
+	imgs := []string{welcomeImageURL, welcomeImage2URL}
+	if sdCounter >= len(imgs) {
+		sdCounter = 0
+	}
+	img := imgs[sdCounter]
+	sdCounter++
+	return img
+}
+
+func RandomCMWelcomeImage() string {
+	welcomeImageURL := "https://cdn.discordapp.com/attachments/751174152588623912/976921809607880714/You_Doodle_2022-05-19T18_58_15Z.jpg"
+	welcomeImage2URL := "https://media.discordapp.net/attachments/751174152588623912/975368929008558130/Screenshot_2022-05-11_at_11.42.51_PM.png"
+	imgs := []string{welcomeImageURL, welcomeImage2URL}
+	if cmCounter >= len(imgs) {
+		cmCounter = 0
+	}
+	img := imgs[cmCounter]
+	cmCounter++
+	return img
+}
+
+func EmbedsBuilder(title string, description string, param ...interface{}) *[]*discordgo.MessageEmbed {
+	return &[]*discordgo.MessageEmbed{EmbedBuilder(title, description, param...)}
+}
 func EmbedBuilder(title string, description string, param ...interface{}) *discordgo.MessageEmbed {
 	var imageUrl string
 	var fields []*discordgo.MessageEmbedField
