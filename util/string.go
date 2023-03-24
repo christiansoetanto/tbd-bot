@@ -1,9 +1,9 @@
 package util
 
 import (
-	"context"
 	"encoding/json"
 	"regexp"
+	"strings"
 )
 
 const alphanumOnlyPattern = "[^a-zA-Z0-9]+"
@@ -14,13 +14,13 @@ func replace(input, pattern string) string {
 	if err != nil {
 		return ""
 	}
-	return reg.ReplaceAllString(input, "")
+	return strings.ToLower(reg.ReplaceAllString(input, ""))
 }
 
-func ToAlphanum(ctx context.Context, input string) string {
+func ToAlphanum(input string) string {
 	return replace(input, alphanumOnlyPattern)
 }
-func ToAlphanumAndSpace(ctx context.Context, input string) string {
+func ToAlphanumAndSpace(input string) string {
 	return replace(input, alphanumAndSpaceOnlyPattern)
 }
 

@@ -30,7 +30,7 @@ func (h *handler) vettingQuestioningKeywordDetectionHandler(ctx context.Context)
 			return
 		}
 		keyword := setting.Keyword
-		if strings.Contains(util.ToAlphanumAndSpace(ctx, m.Content), keyword) {
+		if strings.Contains(util.ToAlphanumAndSpace(m.Content), keyword) {
 			title := setting.Title
 			rawDescription := setting.Description
 			description := fmt.Sprintf(rawDescription, m.Author.ID)
@@ -70,18 +70,18 @@ func detectVettingResponse(ctx context.Context, input string, setting config.Inv
 	return reg.MatchString(input)
 }
 
-func sanitizeVettingResponse(ctx context.Context, input string) string {
+func sanitizeVettingResponse(input string) string {
 	var regex, err = regexp.Compile("(<(@|@&|#)(.*)?>)")
 	if err != nil {
 		return input
 	}
 	input = regex.ReplaceAllLiteralString(input, "")
-	input = strings.ReplaceAll(util.ToAlphanum(ctx, input), "latinrite", "")
+	input = strings.ReplaceAll(util.ToAlphanum(input), "latinrite", "")
 	return input
 }
 
 func isValidVettingResponse(ctx context.Context, input string, setting config.InvalidVettingResponseSetting) bool {
-	input = sanitizeVettingResponse(ctx, input)
+	input = sanitizeVettingResponse(input)
 	if detectVettingResponse(ctx, input, setting) && !strings.Contains(input, setting.Keyword) {
 		return false
 	}

@@ -118,7 +118,7 @@ func generateAnswerUrl(ctx context.Context, s *discordgo.Session, answerMap answ
 				for i := range answers {
 					if message.Author.ID == answers[i].user.ID {
 						//TODO ganti ke levenshtein
-						if strings.Contains(util.ToAlphanum(ctx, message.Content), util.ToAlphanum(ctx, question)) {
+						if strings.Contains(util.ToAlphanum(message.Content), util.ToAlphanum(question)) {
 							answerLink := fmt.Sprintf("https://discord.com/channels/%s/%s/%s", guildId, channelId, message.ID)
 							answers[i].url = answerLink
 							totalAnswerToBeFound -= 1
