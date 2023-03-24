@@ -7,7 +7,7 @@ import (
 type ImageUrl string
 
 const (
-	LogoURL           = "https://cdn.discordapp.com/avatars/767426889294938112/0e100e9fec18866892ed0c875b341926.png"
+	LogoURL           = "https://cdn.discordapp.com/avatars/974311059680821268/02318b836ae4e2106d383c88a6f7370e.png"
 	FooterText        = "2023 | Made by soetanto"
 	GoldenYellowColor = 16769280
 )
