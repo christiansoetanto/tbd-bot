@@ -34,6 +34,17 @@ func (h *handler) cmVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 			logv2.Debug(ctx, logv2.Info, "CMVerify is not enabled")
 			return nil
 		}
+		if !isMod(ctx, s, guild, i.Member.User.ID) {
+			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Embeds: util.EmbedsBuilder("", fmt.Sprintf("You are not allowed to use this.")),
+			})
+			if err != nil {
+				logv2.Error(ctx, err)
+				return err
+			}
+			return nil
+		}
+
 		options := i.ApplicationCommandData().Options
 		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
 		for _, opt := range options {

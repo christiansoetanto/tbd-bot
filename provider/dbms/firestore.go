@@ -3,6 +3,7 @@ package dbms
 import (
 	"cloud.google.com/go/firestore"
 	"context"
+	"fmt"
 	"github.com/christiansoetanto/tbd-bot/logv2"
 	"google.golang.org/api/iterator"
 	"log"
@@ -40,10 +41,7 @@ type collectionType string
 
 func (db *firestoreDb) collection(collection collectionType) *firestore.CollectionRef {
 	env := os.Getenv("TBDENV")
-	col := string(collection)
-	if env == "staging" {
-		col = col + "_staging"
-	}
+	col := fmt.Sprintf("%s_%s", string(collection), env)
 	return db.c.Collection(col)
 }
 func (db *firestoreDb) HelloWorld(ctx context.Context) error {

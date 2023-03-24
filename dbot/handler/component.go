@@ -15,7 +15,6 @@ func (h *handler) cmPollVoteHandlerFunc(ctx context.Context) func(s *discordgo.S
 	ctx = logv2.InitRequestContext(ctx)
 	ctx = logv2.InitFuncContext(ctx)
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-		logv2.Debug(ctx, logv2.Info, "hello world")
 		pollId := i.Message.ID
 		channelId := i.ChannelID
 		voteValue := i.Interaction.MessageComponentData().Values

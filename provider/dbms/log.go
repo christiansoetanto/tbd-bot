@@ -47,6 +47,5 @@ func (db *firestoreDb) GetLogActivity(ctx context.Context) error {
 		}
 		qs = append(qs, q)
 	}
-	logv2.Debug(ctx, logv2.Info, qs)
 	return nil
 }

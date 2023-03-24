@@ -20,12 +20,7 @@ func Init(devMode bool) Config {
 		DevMode:                    devMode,
 		FirebaseServiceAccountJson: os.Getenv("FIREBASE_CONFIG"),
 	}
-	guildCfg := make(map[GuildId]GuildConfig)
-	if devMode {
-		guildCfg[devServusDeiGuild.GuildId] = devServusDeiGuild
-		guildCfg[devCapitalMindsetGuild.GuildId] = devCapitalMindsetGuild
-	} else {
-	}
+	guildCfg := buildGuildConfig()
 	return Config{
 		AppConfig:   appCfg,
 		GuildConfig: guildCfg,
