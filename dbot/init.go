@@ -2,6 +2,7 @@ package dbot
 
 import (
 	"context"
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/dbot/handler"
@@ -80,7 +81,7 @@ func (u *usecase) registerSlashCommand(ctx context.Context) {
 		}
 		_, err := u.Session.ApplicationCommandBulkOverwrite(u.Session.State.User.ID, string(guildId), guildCommands)
 		if err != nil {
-			logv2.Error(ctx, err, "Cannot create command: %v")
+			logv2.Error(ctx, err, fmt.Sprintf("Cannot create command in guild %s: %v", string(guildId), guildCommands))
 		}
 	}
 }
