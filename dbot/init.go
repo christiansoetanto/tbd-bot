@@ -5,8 +5,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/dbot/handler"
+	"github.com/christiansoetanto/tbd-bot/logv2"
 	"github.com/robfig/cron/v3"
-	"log"
 	"sync"
 )
 
@@ -51,7 +51,7 @@ func (u *usecase) Init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	u.registerSlashCommand()
+	u.registerSlashCommand(ctx)
 	u.loadAllCronJobs(ctx)
 
 	return nil
@@ -69,8 +69,8 @@ func (u *usecase) initHandlers(ctx context.Context) {
 		u.Session.AddHandler(h)
 	}
 }
-func (u *usecase) registerSlashCommand() {
-	commands, _ := u.Handler.GetCommandHandlers(context.Background())
+func (u *usecase) registerSlashCommand(ctx context.Context) {
+	commands, _ := u.Handler.GetCommandHandlers(ctx)
 	for guildId, guild := range u.Config.GuildConfig {
 		var guildCommands []*discordgo.ApplicationCommand
 		for _, command := range commands {
@@ -80,7 +80,7 @@ func (u *usecase) registerSlashCommand() {
 		}
 		_, err := u.Session.ApplicationCommandBulkOverwrite(u.Session.State.User.ID, string(guildId), guildCommands)
 		if err != nil {
-			log.Fatalf("Cannot create command: %v", err)
+			logv2.Error(ctx, err, "Cannot create command: %v")
 		}
 	}
 }
