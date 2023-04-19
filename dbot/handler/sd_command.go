@@ -187,6 +187,7 @@ func (h *handler) sdQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
 		}
 
 		_, err = s.ChannelMessageSendComplex(vqChannelId, &discordgo.MessageSend{
+			Content: fmt.Sprintf("<@%s>", user.ID),
 			Embed: util.EmbedBuilder(
 				"",
 				fmt.Sprintf("Hey <@%s>! It looks like you missed question 1. Please re-read the <#%s> again, we assure you that the code is in there. Thank you!", user.ID, guild.Channel.RulesVetting),
