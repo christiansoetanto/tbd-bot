@@ -2,6 +2,7 @@ package dbot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"github.com/christiansoetanto/tbd-bot/config"
@@ -89,10 +90,24 @@ func (u *usecase) registerSlashCommand(ctx context.Context) {
 func (u *usecase) loadAllCronJobs(ctx context.Context) {
 	const DailyCron = "@daily"
 	const Every5SecondCron = "@every 5s"
+	success := 0
 	c := cron.New()
 	_, err := c.AddFunc(DailyCron, u.liturgicalCalendarCronJob(ctx))
 	if err != nil {
+		logv2.Error(ctx, err, "liturgical calendar cron job failed to load")
+	} else {
+		success++
+	}
+	_, err = c.AddFunc(DailyCron, u.officeOfReadingsCronJob(ctx))
+	if err != nil {
+		logv2.Error(ctx, err, "office of readings cron job failed to load")
+	} else {
+		success++
+	}
+	if success != 0 {
+		c.Start()
+	} else {
+		logv2.Error(ctx, errors.New("no cron job loaded"))
 		return
 	}
-	c.Start()
 }

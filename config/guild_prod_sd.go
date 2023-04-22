@@ -18,10 +18,11 @@ func getServusDeiProdGuildConfig() GuildConfig {
 			ModeratorOrAbove:   []string{"751144316843327599", "802559328220872704", "751144128133201920"},
 		},
 		RegisteredFeature: map[string]bool{
-			domain.FeatureKeyPing:          true,
-			domain.FeatureKeySDVerify:      true,
-			domain.FeatureKeySDQuestionOne: true,
-			domain.FeatureKeyCalendarCron:  true,
+			domain.FeatureKeyPing:                 true,
+			domain.FeatureKeySDVerify:             true,
+			domain.FeatureKeySDQuestionOne:        true,
+			domain.FeatureKeyCalendarCron:         true,
+			domain.FeatureKeyOfficeOfReadingsCron: true,
 		},
 		DetectVettingQuestioningKeywordSetting: DetectVettingQuestioningKeywordSetting{
 			Enabled:     true,

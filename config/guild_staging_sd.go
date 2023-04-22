@@ -19,10 +19,11 @@ func getServusDeiStagingGuildConfig() GuildConfig {
 		},
 		Reaction: Reaction{},
 		RegisteredFeature: map[string]bool{
-			domain.FeatureKeyPing:          true,
-			domain.FeatureKeySDVerify:      true,
-			domain.FeatureKeySDQuestionOne: true,
-			domain.FeatureKeyCalendarCron:  true,
+			domain.FeatureKeyPing:                 true,
+			domain.FeatureKeySDVerify:             true,
+			domain.FeatureKeySDQuestionOne:        true,
+			domain.FeatureKeyCalendarCron:         true,
+			domain.FeatureKeyOfficeOfReadingsCron: true,
 		},
 		DetectVettingQuestioningKeywordSetting: DetectVettingQuestioningKeywordSetting{
 			Enabled:     true,
