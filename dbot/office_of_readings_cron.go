@@ -69,7 +69,7 @@ func (u *usecase) officeOfReadingsCronJob(ctx context.Context) func() {
 		}
 		for _, config := range u.Config.GuildConfig {
 			if config.RegisteredFeature[domain.FeatureKeyOfficeOfReadingsCron] {
-				_, err = u.Session.ChannelMessageSendEmbed(config.Channel.LiturgicalCalendarDiscussion, embed)
+				_, err = u.Session.ChannelMessageSendEmbed(config.Channel.OfficeOfReadings, embed)
 				if err != nil {
 					logv2.Error(ctx, err)
 				}

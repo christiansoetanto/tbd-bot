@@ -8,6 +8,7 @@ func getServusDeiStagingGuildConfig() GuildConfig {
 		GuildName: "Dev - Servus Dei",
 		Channel: Channel{
 			LiturgicalCalendarDiscussion: "1013780907192221757",
+			OfficeOfReadings:             "1013780907192221757",
 			RulesVetting:                 "1013780880591954002",
 		},
 		Role: Role{
