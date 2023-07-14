@@ -22,6 +22,7 @@ func getServusDeiProdGuildConfig() GuildConfig {
 			domain.FeatureKeyPing:                 true,
 			domain.FeatureKeySDVerify:             true,
 			domain.FeatureKeySDQuestionOne:        true,
+			domain.FeatureKeySDVettingQuestioning: true,
 			domain.FeatureKeyCalendarCron:         true,
 			domain.FeatureKeyOfficeOfReadingsCron: true,
 		},
@@ -63,6 +64,10 @@ func getServusDeiProdGuildConfig() GuildConfig {
 			TriggerReactionId: "762045856592822342",
 		},
 		SDQuestionOneSetting: SDQuestionOneSetting{
+			Enabled:                     true,
+			VettingQuestioningChannelId: "914987511481249792",
+		},
+		SDVettingQuestioningSetting: SDVettingQuestioningSetting{
 			Enabled:                     true,
 			VettingQuestioningChannelId: "914987511481249792",
 		},

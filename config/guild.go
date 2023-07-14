@@ -25,8 +25,9 @@ type GuildConfig struct {
 
 	//start SD
 
-	SDVerifySetting      SDVerifySetting
-	SDQuestionOneSetting SDQuestionOneSetting
+	SDVerifySetting             SDVerifySetting
+	SDQuestionOneSetting        SDQuestionOneSetting
+	SDVettingQuestioningSetting SDVettingQuestioningSetting
 
 	//end SD
 
@@ -45,6 +46,10 @@ type CMQuestionOneSetting struct {
 	VettingQuestioningChannelId string `json:"vetting_questioning_channel_id,omitempty"`
 }
 type SDQuestionOneSetting struct {
+	Enabled                     bool   `json:"enabled,omitempty"`
+	VettingQuestioningChannelId string `json:"vetting_questioning_channel_id,omitempty"`
+}
+type SDVettingQuestioningSetting struct {
 	Enabled                     bool   `json:"enabled,omitempty"`
 	VettingQuestioningChannelId string `json:"vetting_questioning_channel_id,omitempty"`
 }

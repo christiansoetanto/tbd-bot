@@ -214,3 +214,99 @@ func (h *handler) sdQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
 		return nil
 	}
 }
+func (h *handler) sdVettingQuestioningCommandHandlerFunc(ctx context.Context) func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	ctx = logv2.InitRequestContext(ctx)
+	ctx = logv2.InitFuncContext(ctx)
+	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Flags: discordgo.MessageFlagsEphemeral,
+			},
+		})
+		if err != nil {
+			logv2.Error(ctx, err)
+			return err
+		}
+
+		guild, ok := h.Config.GuildConfig[config.GuildId(i.GuildID)]
+		if !ok {
+			e := errors.New("guild is not found")
+			logv2.Error(ctx, e, i)
+			reportInteractionError(ctx, s, i.Interaction)
+			return e
+		}
+		if !guild.SDVettingQuestioningSetting.Enabled {
+			logv2.Debug(ctx, logv2.Info, "SDVettingQuestioning is not enabled")
+			return nil
+		}
+		if !isMod(ctx, s, guild, i.Member.User.ID) {
+			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Embeds: util.EmbedsBuilder("", fmt.Sprintf("You are not allowed to use this.")),
+			})
+			if err != nil {
+				logv2.Error(ctx, err)
+				return err
+			}
+			return nil
+		}
+		vqChannelId := guild.SDVettingQuestioningSetting.VettingQuestioningChannelId
+		options := i.ApplicationCommandData().Options
+		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
+		for _, opt := range options {
+			optionMap[opt.Name] = opt
+		}
+
+		userOpt, ok := optionMap["user"]
+		if !ok {
+			e := errors.New("user option is not found")
+			logv2.Error(ctx, e, options)
+			reportInteractionError(ctx, s, i.Interaction)
+			return e
+		}
+		user := userOpt.UserValue(s)
+
+		messageOpt, ok := optionMap["message"]
+		if !ok {
+			e := errors.New("message option is not found")
+			logv2.Error(ctx, e, options)
+			reportInteractionError(ctx, s, i.Interaction)
+			return e
+		}
+		message := messageOpt.StringValue()
+
+		err = s.GuildMemberRoleAdd(i.GuildID, user.ID, guild.Role.VettingQuestioning)
+		if err != nil {
+			logv2.Error(ctx, err, fmt.Sprintf("failed to add role %s to user %s", guild.Role.VettingQuestioning, user.ID))
+			reportInteractionError(ctx, s, i.Interaction)
+			return err
+		}
+
+		_, err = s.ChannelMessageSendComplex(vqChannelId, &discordgo.MessageSend{
+			Content: fmt.Sprintf("<@%s>", user.ID),
+			Embed: util.EmbedBuilder(
+				"",
+				message,
+			),
+		})
+
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction)
+			return err
+		}
+
+		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Embeds: util.EmbedsBuilder("", fmt.Sprintf("Done. Please check <#%s>.", vqChannelId)),
+		})
+
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction)
+			return err
+		}
+
+		logv2.Debug(ctx, logv2.Info, logv2.Finish)
+		return nil
+	}
+}

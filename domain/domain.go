@@ -8,6 +8,8 @@ const (
 	FeatureKeyPing                 string = "ping"
 	FeatureKeySDVerify             string = "sdverify"
 	FeatureKeySDQuestionOne        string = "sdquestionone"
+	FeatureKeySDVettingQuestioning string = "sdvettingquestioning"
+
 	FeatureKeyCMVerify             string = "cmverify"
 	FeatureKeyCMQuestionOne        string = "cmquestionone"
 	FeatureKeyCMPoll               string = "cmpoll"

@@ -14,12 +14,13 @@ type componentHandler map[string]func(s *discordgo.Session, i *discordgo.Interac
 
 func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.ApplicationCommand, commandHandler) {
 	commandHandlers := commandHandler{
-		domain.FeatureKeyPing:          h.pingCommandHandlerFunc(ctx),
-		domain.FeatureKeySDVerify:      h.sdVerifyCommandHandlerFunc(ctx),
-		domain.FeatureKeySDQuestionOne: h.sdQuestionOneCommandHandlerFunc(ctx),
-		domain.FeatureKeyCMQuestionOne: h.cmQuestionOneCommandHandlerFunc(ctx),
-		domain.FeatureKeyCMVerify:      h.cmVerifyCommandHandlerFunc(ctx),
-		domain.FeatureKeyCMPoll:        h.cmPollCommandHandlerFunc(ctx),
+		domain.FeatureKeyPing:                 h.pingCommandHandlerFunc(ctx),
+		domain.FeatureKeySDVerify:             h.sdVerifyCommandHandlerFunc(ctx),
+		domain.FeatureKeySDQuestionOne:        h.sdQuestionOneCommandHandlerFunc(ctx),
+		domain.FeatureKeySDVettingQuestioning: h.sdVettingQuestioningCommandHandlerFunc(ctx),
+		domain.FeatureKeyCMQuestionOne:        h.cmQuestionOneCommandHandlerFunc(ctx),
+		domain.FeatureKeyCMVerify:             h.cmVerifyCommandHandlerFunc(ctx),
+		domain.FeatureKeyCMPoll:               h.cmPollCommandHandlerFunc(ctx),
 	}
 	applicationCommands := []*discordgo.ApplicationCommand{
 		{
@@ -158,6 +159,26 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 				},
 			},
 		},
+
+		{
+			Name:        domain.FeatureKeySDVettingQuestioning,
+			Description: "tag people in #vetting-questioning with a message",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "user to verify",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "message",
+					Description: "message",
+					Required:    true,
+				},
+			},
+		},
+
 		{
 			Name:        domain.FeatureKeySDQuestionOne,
 			Description: "alert user that they missed question one answer",
