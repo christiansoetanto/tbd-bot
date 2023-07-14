@@ -18,6 +18,7 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 		domain.FeatureKeySDVerify:             h.sdVerifyCommandHandlerFunc(ctx),
 		domain.FeatureKeySDQuestionOne:        h.sdQuestionOneCommandHandlerFunc(ctx),
 		domain.FeatureKeySDVettingQuestioning: h.sdVettingQuestioningCommandHandlerFunc(ctx),
+		domain.FeatureKeySDDetain:             h.sdDetainCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMQuestionOne:        h.cmQuestionOneCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMVerify:             h.cmVerifyCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMPoll:               h.cmPollCommandHandlerFunc(ctx),
@@ -159,7 +160,6 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 				},
 			},
 		},
-
 		{
 			Name:        domain.FeatureKeySDVettingQuestioning,
 			Description: "tag people in #vetting-questioning with a message",
@@ -178,7 +178,18 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 				},
 			},
 		},
-
+		{
+			Name:        domain.FeatureKeySDDetain,
+			Description: "detain",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "user to verify",
+					Required:    true,
+				},
+			},
+		},
 		{
 			Name:        domain.FeatureKeySDQuestionOne,
 			Description: "alert user that they missed question one answer",

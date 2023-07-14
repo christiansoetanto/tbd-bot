@@ -14,6 +14,7 @@ func getServusDeiStagingGuildConfig() GuildConfig {
 		Role: Role{
 			Vetting:            []string{"974632148952809482"},
 			VettingQuestioning: "974632188823863296",
+			Detained:           "1129260016663277579",
 			ApprovedUser:       "974632216304943155",
 			Moderator:          "1013781460953616404",
 			ModeratorOrAbove:   []string{"1013781460953616404"},
@@ -24,6 +25,7 @@ func getServusDeiStagingGuildConfig() GuildConfig {
 			domain.FeatureKeySDVerify:             true,
 			domain.FeatureKeySDQuestionOne:        true,
 			domain.FeatureKeySDVettingQuestioning: true,
+			domain.FeatureKeySDDetain:             true,
 			domain.FeatureKeyCalendarCron:         true,
 			domain.FeatureKeyOfficeOfReadingsCron: true,
 		},

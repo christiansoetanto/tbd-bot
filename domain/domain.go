@@ -9,7 +9,7 @@ const (
 	FeatureKeySDVerify             string = "sdverify"
 	FeatureKeySDQuestionOne        string = "sdquestionone"
 	FeatureKeySDVettingQuestioning string = "sdvettingquestioning"
-
+	FeatureKeySDDetain             string = "sddetain"
 	FeatureKeyCMVerify             string = "cmverify"
 	FeatureKeyCMQuestionOne        string = "cmquestionone"
 	FeatureKeyCMPoll               string = "cmpoll"

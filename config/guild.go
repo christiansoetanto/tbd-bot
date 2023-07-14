@@ -107,6 +107,7 @@ type Reaction struct {
 type Role struct {
 	Vetting            []string `json:"vetting,omitempty"`
 	VettingQuestioning string   `json:"vetting_questioning,omitempty"`
+	Detained           string   `json:"detained,omitempty"`
 	ApprovedUser       string   `json:"approved_user,omitempty"`
 	Moderator          string   `json:"moderator,omitempty"`
 	ModeratorOrAbove   []string `json:"moderator_or_above,omitempty"`
