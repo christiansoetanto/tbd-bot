@@ -15,6 +15,7 @@ const (
 	FeatureKeyCMPoll               string = "cmpoll"
 	FeatureKeyCalendarCron         string = "calendar_cron"
 	FeatureKeyOfficeOfReadingsCron string = "office_of_readings_cron"
+	FeatureKeyFridayCron           string = "friday_cron"
 )
 
 const (

@@ -100,6 +100,7 @@ type Channel struct {
 	RulesVetting                 string `json:"rules_vetting,omitempty"`
 	LiturgicalCalendarDiscussion string `json:"liturgical_calendar_discussion,omitempty"`
 	OfficeOfReadings             string `json:"office_of_readings,omitempty"`
+	ChristianMemes               string `json:"christian_memes,omitempty"`
 }
 type Reaction struct {
 	Gold string `json:"gold,omitempty"`

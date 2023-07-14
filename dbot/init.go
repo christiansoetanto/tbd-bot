@@ -89,6 +89,7 @@ func (u *usecase) registerSlashCommand(ctx context.Context) {
 
 func (u *usecase) loadAllCronJobs(ctx context.Context) {
 	const DailyCron = "@daily"
+	const FridayCron = "0 0 * * 5"
 	const Every5SecondCron = "@every 5s"
 	success := 0
 	c := cron.New()
@@ -104,6 +105,13 @@ func (u *usecase) loadAllCronJobs(ctx context.Context) {
 	} else {
 		success++
 	}
+	_, err = c.AddFunc(FridayCron, u.fridayCronJob(ctx))
+	if err != nil {
+		logv2.Error(ctx, err, "friday cron job failed to load")
+	} else {
+		success++
+	}
+
 	if success != 0 {
 		c.Start()
 	} else {

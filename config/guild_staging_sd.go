@@ -10,6 +10,7 @@ func getServusDeiStagingGuildConfig() GuildConfig {
 			LiturgicalCalendarDiscussion: "1013780907192221757",
 			OfficeOfReadings:             "1013780907192221757",
 			RulesVetting:                 "1013780880591954002",
+			ChristianMemes:               "1129281996053565482",
 		},
 		Role: Role{
 			Vetting:            []string{"974632148952809482"},
@@ -28,6 +29,7 @@ func getServusDeiStagingGuildConfig() GuildConfig {
 			domain.FeatureKeySDDetain:             true,
 			domain.FeatureKeyCalendarCron:         true,
 			domain.FeatureKeyOfficeOfReadingsCron: true,
+			domain.FeatureKeyFridayCron:           true,
 		},
 		DetectVettingQuestioningKeywordSetting: DetectVettingQuestioningKeywordSetting{
 			Enabled:     true,

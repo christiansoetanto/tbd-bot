@@ -10,6 +10,7 @@ func getServusDeiProdGuildConfig() GuildConfig {
 			LiturgicalCalendarDiscussion: "915621423270211594",
 			OfficeOfReadings:             "1103015883955261532",
 			RulesVetting:                 "775654889934159893",
+			ChristianMemes:               "751174184733900801",
 		},
 		Role: Role{
 			Vetting:            []string{"751145124834312342"},
@@ -27,6 +28,7 @@ func getServusDeiProdGuildConfig() GuildConfig {
 			domain.FeatureKeySDDetain:             true,
 			domain.FeatureKeyCalendarCron:         true,
 			domain.FeatureKeyOfficeOfReadingsCron: true,
+			domain.FeatureKeyFridayCron:           true,
 		},
 		DetectVettingQuestioningKeywordSetting: DetectVettingQuestioningKeywordSetting{
 			Enabled:     true,
