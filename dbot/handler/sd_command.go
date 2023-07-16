@@ -284,11 +284,7 @@ func (h *handler) sdVettingQuestioningCommandHandlerFunc(ctx context.Context) fu
 		}
 
 		_, err = s.ChannelMessageSendComplex(vqChannelId, &discordgo.MessageSend{
-			Content: fmt.Sprintf("<@%s>", user.ID),
-			Embed: util.EmbedBuilder(
-				"",
-				message,
-			),
+			Content: fmt.Sprintf("<@%s> %s", user.ID, message),
 		})
 
 		if err != nil {
