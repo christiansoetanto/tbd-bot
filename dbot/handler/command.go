@@ -19,6 +19,7 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 		domain.FeatureKeySDQuestionOne:        h.sdQuestionOneCommandHandlerFunc(ctx),
 		domain.FeatureKeySDVettingQuestioning: h.sdVettingQuestioningCommandHandlerFunc(ctx),
 		domain.FeatureKeySDDetain:             h.sdDetainCommandHandlerFunc(ctx),
+		domain.FeatureKeySDOfficeOfReadings:   h.sdOfficeOfReadingsCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMQuestionOne:        h.cmQuestionOneCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMVerify:             h.cmVerifyCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMPoll:               h.cmPollCommandHandlerFunc(ctx),
@@ -189,6 +190,10 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 					Required:    true,
 				},
 			},
+		},
+		{
+			Name:        domain.FeatureKeySDOfficeOfReadings,
+			Description: "send the 2nd reading of the Office of Readings",
 		},
 		{
 			Name:        domain.FeatureKeySDQuestionOne,

@@ -10,6 +10,7 @@ const (
 	FeatureKeySDQuestionOne        string = "sdquestionone"
 	FeatureKeySDVettingQuestioning string = "sdvettingquestioning"
 	FeatureKeySDDetain             string = "sddetain"
+	FeatureKeySDOfficeOfReadings   string = "sdofficeofreadings"
 	FeatureKeyCMVerify             string = "cmverify"
 	FeatureKeyCMQuestionOne        string = "cmquestionone"
 	FeatureKeyCMPoll               string = "cmpoll"

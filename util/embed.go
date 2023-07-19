@@ -15,15 +15,8 @@ const (
 
 var sdCounter = 0
 var cmCounter = 0
+var sdFridayCounter = 0
 
-func randomWelcomeImage(imgs []string, counter int) string {
-	if counter >= len(imgs) {
-		counter = 0
-	}
-	img := imgs[counter]
-	counter++
-	return img
-}
 func RandomSDWelcomeImage() string {
 	welcomeImageURL := "https://cdn.discordapp.com/attachments/751174152588623912/976921809607880714/You_Doodle_2022-05-19T18_58_15Z.jpg"
 	welcomeImage2URL := "https://media.discordapp.net/attachments/751174152588623912/975368929008558130/Screenshot_2022-05-11_at_11.42.51_PM.png"
@@ -33,6 +26,18 @@ func RandomSDWelcomeImage() string {
 	}
 	img := imgs[sdCounter]
 	sdCounter++
+	return img
+}
+func RandomSDFridayMemeImage() string {
+	imgs := []string{
+		"https://imgur.com/CIeRgm9",
+		"https://imgur.com/wkwVjjI",
+	}
+	if sdFridayCounter >= len(imgs) {
+		sdFridayCounter = 0
+	}
+	img := imgs[sdFridayCounter]
+	sdFridayCounter++
 	return img
 }
 
