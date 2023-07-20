@@ -12,17 +12,19 @@ import (
 	"time"
 )
 
-func reportInteractionError(ctx context.Context, s *discordgo.Session, i *discordgo.Interaction) {
+func reportInteractionError(ctx context.Context, s *discordgo.Session, i *discordgo.Interaction, err error) {
 	ctx = logv2.InitFuncContext(ctx)
 	reqId := logv2.GetCtxReqId(ctx)
 	timeNow := time.Now().Format(time.RFC3339)
 	type reporter struct {
 		ReqId string `json:"req_id"`
 		Time  string `json:"time"`
+		Err   string `json:"err"`
 	}
 	r := reporter{
 		ReqId: reqId,
 		Time:  timeNow,
+		Err:   err.Error(),
 	}
 
 	msg, err := json.MarshalIndent(r, "", "\t")

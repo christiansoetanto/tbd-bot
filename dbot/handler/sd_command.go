@@ -28,7 +28,7 @@ func (h *handler) sdVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 		if !ok {
 			e := errors.New("guild is not found")
 			logv2.Error(ctx, e, i)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		if !guild.SDVerifySetting.Enabled {
@@ -57,7 +57,7 @@ func (h *handler) sdVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 		if !ok {
 			e := errors.New("user option is not found")
 			logv2.Error(ctx, e, options)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 
@@ -67,7 +67,7 @@ func (h *handler) sdVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 		if !ok {
 			e := errors.New("role option is not found")
 			logv2.Error(ctx, e, options)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 
@@ -82,7 +82,7 @@ func (h *handler) sdVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 			e := s.GuildMemberRoleAdd(i.GuildID, user.ID, r)
 			if e != nil {
 				logv2.Error(ctx, e, fmt.Sprintf("failed to add role %s to user %s", r, user.ID))
-				reportInteractionError(ctx, s, i.Interaction)
+				reportInteractionError(ctx, s, i.Interaction, e)
 				return e
 			}
 		}
@@ -90,7 +90,7 @@ func (h *handler) sdVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 			e := s.GuildMemberRoleRemove(i.GuildID, user.ID, r)
 			if e != nil {
 				logv2.Error(ctx, e, fmt.Sprintf("failed to remove role %s from user %s", r, user.ID))
-				reportInteractionError(ctx, s, i.Interaction)
+				reportInteractionError(ctx, s, i.Interaction, e)
 				return e
 			}
 		}
@@ -100,7 +100,7 @@ func (h *handler) sdVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -121,7 +121,7 @@ func (h *handler) sdVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 		logv2.Debug(ctx, logv2.Info, logv2.Finish)
@@ -147,7 +147,7 @@ func (h *handler) sdQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
 		if !ok {
 			e := errors.New("guild is not found")
 			logv2.Error(ctx, e, i)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		if !guild.SDQuestionOneSetting.Enabled {
@@ -175,7 +175,7 @@ func (h *handler) sdQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
 		if !ok {
 			e := errors.New("user option is not found")
 			logv2.Error(ctx, e, options)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		user := userOpt.UserValue(s)
@@ -183,7 +183,7 @@ func (h *handler) sdQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
 		err = s.GuildMemberRoleAdd(i.GuildID, user.ID, guild.Role.VettingQuestioning)
 		if err != nil {
 			logv2.Error(ctx, err, fmt.Sprintf("failed to add role %s to user %s", guild.Role.VettingQuestioning, user.ID))
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -197,7 +197,7 @@ func (h *handler) sdQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -207,7 +207,7 @@ func (h *handler) sdQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -234,7 +234,7 @@ func (h *handler) sdVettingQuestioningCommandHandlerFunc(ctx context.Context) fu
 		if !ok {
 			e := errors.New("guild is not found")
 			logv2.Error(ctx, e, i)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		if !guild.SDVettingQuestioningSetting.Enabled {
@@ -262,7 +262,7 @@ func (h *handler) sdVettingQuestioningCommandHandlerFunc(ctx context.Context) fu
 		if !ok {
 			e := errors.New("user option is not found")
 			logv2.Error(ctx, e, options)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		user := userOpt.UserValue(s)
@@ -271,7 +271,7 @@ func (h *handler) sdVettingQuestioningCommandHandlerFunc(ctx context.Context) fu
 		if !ok {
 			e := errors.New("message option is not found")
 			logv2.Error(ctx, e, options)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		message := messageOpt.StringValue()
@@ -279,7 +279,7 @@ func (h *handler) sdVettingQuestioningCommandHandlerFunc(ctx context.Context) fu
 		err = s.GuildMemberRoleAdd(i.GuildID, user.ID, guild.Role.VettingQuestioning)
 		if err != nil {
 			logv2.Error(ctx, err, fmt.Sprintf("failed to add role %s to user %s", guild.Role.VettingQuestioning, user.ID))
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -289,7 +289,7 @@ func (h *handler) sdVettingQuestioningCommandHandlerFunc(ctx context.Context) fu
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -299,7 +299,7 @@ func (h *handler) sdVettingQuestioningCommandHandlerFunc(ctx context.Context) fu
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -326,7 +326,7 @@ func (h *handler) sdDetainCommandHandlerFunc(ctx context.Context) func(s *discor
 		if !ok {
 			e := errors.New("guild is not found")
 			logv2.Error(ctx, e, i)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		if !guild.SDQuestionOneSetting.Enabled {
@@ -353,7 +353,7 @@ func (h *handler) sdDetainCommandHandlerFunc(ctx context.Context) func(s *discor
 		if !ok {
 			e := errors.New("user option is not found")
 			logv2.Error(ctx, e, options)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		user := userOpt.UserValue(s)
@@ -365,7 +365,7 @@ func (h *handler) sdDetainCommandHandlerFunc(ctx context.Context) func(s *discor
 		err = s.GuildMemberRoleAdd(i.GuildID, user.ID, guild.Role.Detained)
 		if err != nil {
 			logv2.Error(ctx, err, fmt.Sprintf("failed to add role %s to user %s", guild.Role.Detained, user.ID))
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -384,7 +384,7 @@ func (h *handler) sdDetainCommandHandlerFunc(ctx context.Context) func(s *discor
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -394,7 +394,7 @@ func (h *handler) sdDetainCommandHandlerFunc(ctx context.Context) func(s *discor
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
@@ -422,7 +422,7 @@ func (h *handler) sdOfficeOfReadingsCommandHandlerFunc(ctx context.Context) func
 		if !ok {
 			e := errors.New("guild is not found")
 			logv2.Error(ctx, e, i)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, e)
 			return e
 		}
 		if !isMod(ctx, s, guild, i.Member.User.ID) {
@@ -440,14 +440,14 @@ func (h *handler) sdOfficeOfReadingsCommandHandlerFunc(ctx context.Context) func
 		embeds, err := util.GenerateOfficeOfReadingsEmbeds()
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
 		_, err = s.ChannelMessageSendEmbeds(channelId, embeds)
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
@@ -456,7 +456,7 @@ func (h *handler) sdOfficeOfReadingsCommandHandlerFunc(ctx context.Context) func
 
 		if err != nil {
 			logv2.Error(ctx, err)
-			reportInteractionError(ctx, s, i.Interaction)
+			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
 
