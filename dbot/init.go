@@ -105,6 +105,13 @@ func (u *usecase) loadAllCronJobs(ctx context.Context) {
 	} else {
 		success++
 	}
+
+	_, err = c.AddFunc(DailyCron, u.officeOfReadingsCronJob2(ctx))
+	if err != nil {
+		logv2.Error(ctx, err, "office of readings cron job 2 failed to load")
+	} else {
+		success++
+	}
 	_, err = c.AddFunc(FridayCron, u.fridayCronJob(ctx))
 	if err != nil {
 		logv2.Error(ctx, err, "friday cron job failed to load")
