@@ -20,6 +20,7 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 		domain.FeatureKeySDVettingQuestioning: h.sdVettingQuestioningCommandHandlerFunc(ctx),
 		domain.FeatureKeySDDetain:             h.sdDetainCommandHandlerFunc(ctx),
 		domain.FeatureKeySDOfficeOfReadings:   h.sdOfficeOfReadingsCommandHandlerFunc(ctx),
+		domain.FeatureKeySDCalendar:           h.sdCalendarCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMQuestionOne:        h.cmQuestionOneCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMVerify:             h.cmVerifyCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMPoll:               h.cmPollCommandHandlerFunc(ctx),
@@ -194,6 +195,10 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 		{
 			Name:        domain.FeatureKeySDOfficeOfReadings,
 			Description: "send the 2nd reading of the Office of Readings",
+		},
+		{
+			Name:        domain.FeatureKeySDCalendar,
+			Description: "send liturgical calendar for today",
 		},
 		{
 			Name:        domain.FeatureKeySDQuestionOne,

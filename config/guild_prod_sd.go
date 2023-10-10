@@ -27,6 +27,7 @@ func getServusDeiProdGuildConfig() GuildConfig {
 			domain.FeatureKeySDVettingQuestioning: true,
 			domain.FeatureKeySDDetain:             true,
 			domain.FeatureKeySDOfficeOfReadings:   true,
+			domain.FeatureKeySDCalendar:           true,
 			domain.FeatureKeyCalendarCron:         true,
 			domain.FeatureKeyOfficeOfReadingsCron: true,
 			domain.FeatureKeyFridayCron:           true,
