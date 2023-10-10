@@ -464,3 +464,67 @@ func (h *handler) sdOfficeOfReadingsCommandHandlerFunc(ctx context.Context) func
 		return nil
 	}
 }
+func (h *handler) sdCalendarCommandHandlerFunc(ctx context.Context) func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	ctx = logv2.InitRequestContext(ctx)
+	ctx = logv2.InitFuncContext(ctx)
+	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Flags: discordgo.MessageFlagsEphemeral,
+			},
+		})
+		if err != nil {
+			logv2.Error(ctx, err)
+			return err
+		}
+
+		guild, ok := h.Config.GuildConfig[config.GuildId(i.GuildID)]
+		if !ok {
+			e := errors.New("guild is not found")
+			logv2.Error(ctx, e, i)
+			reportInteractionError(ctx, s, i.Interaction, e)
+			return e
+		}
+		if !isMod(ctx, s, guild, i.Member.User.ID) {
+			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Embeds: util.EmbedsBuilder("", fmt.Sprintf("You are not allowed to use this.")),
+			})
+			if err != nil {
+				logv2.Error(ctx, err)
+				return err
+			}
+			return nil
+		}
+		channelId := i.Interaction.ChannelID
+
+		embed, isMentionLatinCath, err := util.GenerateCalendarEmbed()
+		if err != nil {
+			logv2.Error(ctx, err)
+			return err
+		}
+		var msg string
+		if isMentionLatinCath {
+			msg = fmt.Sprintf("<@&%s>", guild.SDVerifySetting.ReligionRoleMap[domain.ReligionRoleKeyLatinCatholic])
+		}
+		_, err = s.ChannelMessageSendComplex(channelId, &discordgo.MessageSend{
+			Content: msg,
+			Embed:   embed,
+		})
+		if err != nil {
+			logv2.Error(ctx, err)
+		}
+		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Embeds: util.EmbedsBuilder("", ":white_check_mark:"),
+		})
+
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction, err)
+			return err
+		}
+
+		logv2.Debug(ctx, logv2.Info, logv2.Finish)
+		return nil
+	}
+}
