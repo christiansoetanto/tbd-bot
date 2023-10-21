@@ -115,7 +115,7 @@ func (h *handler) tsVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 			Embed: util.EmbedBuilder(
 				welcomeTitle,
 				fmt.Sprintf(welcomeMessageEmbedFormat, user.ID, guild.TSVerifySetting.ReactionRoleChannelId, guild.TSVerifySetting.ServerInformationChannelId),
-				util.ImageUrl(util.RandomSDWelcomeImage()),
+				util.ImageUrl(util.RandomTSWelcomeImage()),
 			),
 		})
 
