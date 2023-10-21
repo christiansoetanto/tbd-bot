@@ -104,7 +104,7 @@ func (h *handler) tsVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 			return err
 		}
 
-		welcomeMessageFormat := "¡Hola, %s! %s Santiago acaba de aprobar tu respuesta de verificación. Bienvenido al servidor. No dudes en etiquetarnos si tienes más preguntas. ¡Buen día!"
+		welcomeMessageFormat := "¡Hola, %s! %s acaba de aprobar tu respuesta de verificación. Bienvenido al servidor. No dudes en etiquetarnos si tienes más preguntas. ¡Buen día!"
 		welcomeMessageEmbedFormat := "¡Bienvenido a Terra Sancta, <@%s>! ¡Nos alegramos de contar contigo! Asegúrate de revisar <#%s> para tener acceso a los diversos canales que ofrecemos y por favor visita <#%s> para que puedas entender mejor nuestro servidor y aprovechar todo lo que tenemos para ofrecer. ¡Que Dios te bendiga!"
 		welcomeTitle := "¡Bienvenido a Terra Sancta"
 
