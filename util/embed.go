@@ -14,6 +14,7 @@ const (
 )
 
 var sdCounter = 0
+var tsCounter = 0
 var cmCounter = 0
 var sdFridayCounter = 0
 
@@ -26,6 +27,17 @@ func RandomSDWelcomeImage() string {
 	}
 	img := imgs[sdCounter]
 	sdCounter++
+	return img
+}
+func RandomTSWelcomeImage() string {
+	welcomeImageURL := "https://cdn.discordapp.com/attachments/888111411052552243/1165307867004416111/83clat.jpg?ex=65466085&is=6533eb85&hm=f8f7bd9ef0f3043fbbf773a04e1e93f31d01a985bcb5405df4dc976db4b1ef0c&"
+	welcomeImage2URL := "https://cdn.discordapp.com/attachments/888111411052552243/1165307867394494594/83cl4c.jpg?ex=65466085&is=6533eb85&hm=204f31fb46ecc12eae1faf58de92d00cbc607d0e981fe01a579a2c56a8e8e3c2&"
+	imgs := []string{welcomeImageURL, welcomeImage2URL}
+	if tsCounter >= len(imgs) {
+		tsCounter = 0
+	}
+	img := imgs[tsCounter]
+	tsCounter++
 	return img
 }
 func RandomSDFridayMemeImage() string {
