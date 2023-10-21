@@ -18,6 +18,12 @@ const (
 	FeatureKeyCalendarCron         string = "calendar_cron"
 	FeatureKeyOfficeOfReadingsCron string = "office_of_readings_cron"
 	FeatureKeyFridayCron           string = "friday_cron"
+
+	FeatureKeyTSVerify           string = "tsverify"
+	FeatureKeyTSQuestionOne      string = "tsquestionone"
+	FeatureKeyTSDetain           string = "tsdetain"
+	FeatureKeyTSOfficeOfReadings string = "tsofficeofreadings"
+	FeatureKeyTSCalendar         string = "tscalendar"
 )
 
 const (
