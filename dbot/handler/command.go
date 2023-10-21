@@ -24,6 +24,11 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 		domain.FeatureKeyCMQuestionOne:        h.cmQuestionOneCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMVerify:             h.cmVerifyCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMPoll:               h.cmPollCommandHandlerFunc(ctx),
+		domain.FeatureKeyTSVerify:             h.tsVerifyCommandHandlerFunc(ctx),
+		domain.FeatureKeyTSQuestionOne:        h.tsQuestionOneCommandHandlerFunc(ctx),
+		domain.FeatureKeyTSDetain:             h.tsDetainCommandHandlerFunc(ctx),
+		domain.FeatureKeyTSOfficeOfReadings:   h.tsOfficeOfReadingsCommandHandlerFunc(ctx),
+		domain.FeatureKeyTSCalendar:           h.tsCalendarCommandHandlerFunc(ctx),
 	}
 	applicationCommands := []*discordgo.ApplicationCommand{
 		{
@@ -33,6 +38,54 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 		{
 			Name:        domain.FeatureKeySDVerify,
 			Description: "verify user to Servus Dei server",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "user to verify",
+					Required:    true,
+				},
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "role",
+					Description: "religion role to give",
+					Required:    true,
+					Choices: []*discordgo.ApplicationCommandOptionChoice{
+						{
+							Name:  "Latin Catholic",
+							Value: domain.ReligionRoleKeyLatinCatholic,
+						},
+						{
+							Name:  "Eastern Catholic",
+							Value: domain.ReligionRoleKeyEasternCatholic,
+						},
+						{
+							Name:  "RCIA / Catechumen",
+							Value: domain.ReligionRoleKeyRCIACatechumen,
+						},
+						{
+							Name:  "Orthodox Christian",
+							Value: domain.ReligionRoleKeyOrthodoxChristian,
+						},
+						{
+							Name:  "Protestant",
+							Value: domain.ReligionRoleKeyProtestant,
+						},
+						{
+							Name:  "Non-Catholic",
+							Value: domain.ReligionRoleKeyNonCatholic,
+						},
+						{
+							Name:  "Atheist",
+							Value: domain.ReligionRoleKeyAtheist,
+						},
+					},
+				},
+			},
+		},
+		{
+			Name:        domain.FeatureKeyTSVerify,
+			Description: "verify user to Terra Sancta server",
 			Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionUser,
@@ -193,7 +246,23 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 			},
 		},
 		{
+			Name:        domain.FeatureKeyTSDetain,
+			Description: "detain",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "user to detain",
+					Required:    true,
+				},
+			},
+		},
+		{
 			Name:        domain.FeatureKeySDOfficeOfReadings,
+			Description: "send the 2nd reading of the Office of Readings",
+		},
+		{
+			Name:        domain.FeatureKeyTSOfficeOfReadings,
 			Description: "send the 2nd reading of the Office of Readings",
 		},
 		{
@@ -201,7 +270,23 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 			Description: "send liturgical calendar for today",
 		},
 		{
+			Name:        domain.FeatureKeyTSCalendar,
+			Description: "send liturgical calendar for today",
+		},
+		{
 			Name:        domain.FeatureKeySDQuestionOne,
+			Description: "alert user that they missed question one answer",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "user to verify",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        domain.FeatureKeyTSQuestionOne,
 			Description: "alert user that they missed question one answer",
 			Options: []*discordgo.ApplicationCommandOption{
 				{

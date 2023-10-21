@@ -40,6 +40,16 @@ type GuildConfig struct {
 	CMQuestionLimiterSetting CMQuestionLimiterSetting
 
 	//end CM
+
+	// ==========
+
+	//start SD
+
+	TSVerifySetting             SDVerifySetting
+	TSQuestionOneSetting        SDQuestionOneSetting
+	TSVettingQuestioningSetting SDVettingQuestioningSetting
+
+	//end SD
 }
 type CMQuestionOneSetting struct {
 	Enabled                     bool   `json:"enabled,omitempty"`
@@ -122,14 +132,18 @@ func buildGuildConfig() map[GuildId]GuildConfig {
 	env := os.Getenv("TBDENV")
 	var sd GuildConfig
 	var cm GuildConfig
+	var ts GuildConfig
 	if env == "staging" {
 		sd = getServusDeiStagingGuildConfig()
 		cm = getCapitalMindsetStagingGuildConfig()
+		ts = getTerraSanctaStagingGuildConfig()
 	} else {
 		sd = getServusDeiProdGuildConfig()
 		cm = getCapitalMindsetProdGuildConfig()
+		ts = getTerraSanctaProdGuildConfig()
 	}
 	cfg[sd.GuildId] = sd
 	cfg[cm.GuildId] = cm
+	cfg[ts.GuildId] = ts
 	return cfg
 }
