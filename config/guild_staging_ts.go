@@ -31,7 +31,7 @@ func getTerraSanctaStagingGuildConfig() GuildConfig {
 			domain.FeatureKeySDCalendar:           true,
 			domain.FeatureKeyCalendarCron:         true,
 			domain.FeatureKeyOfficeOfReadingsCron: true,
-			domain.FeatureKeyFridayCron:           true,
+			domain.FeatureKeyFridayCron:           false,
 		},
 		DetectVettingQuestioningKeywordSetting: DetectVettingQuestioningKeywordSetting{
 			Enabled:     true,

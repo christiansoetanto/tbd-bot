@@ -29,7 +29,7 @@ func getTerraSanctaProdGuildConfig() GuildConfig {
 			domain.FeatureKeyTSCalendar:           true,
 			domain.FeatureKeyCalendarCron:         true,
 			domain.FeatureKeyOfficeOfReadingsCron: true,
-			domain.FeatureKeyFridayCron:           true,
+			domain.FeatureKeyFridayCron:           false,
 		},
 		TSVerifySetting: SDVerifySetting{
 			Enabled: true,
