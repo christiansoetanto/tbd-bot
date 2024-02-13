@@ -19,7 +19,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	logv2.Debug(ctx, logv2.Info, "Starting tbd-bot")
+	logv2.Debug(ctx, logv2.Info, "Starting tbd-bot...")
 	devMode, err := strconv.ParseBool(os.Getenv("DEVMODE"))
 	if err != nil {
 		log.Fatal("Error parsing DEVMODE environment variable")
