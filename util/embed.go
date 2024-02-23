@@ -42,8 +42,10 @@ func RandomTSWelcomeImage() string {
 }
 func RandomSDFridayMemeImage() string {
 	imgs := []string{
-		"https://imgur.com/CIeRgm9",
+		"https://cdn.discordapp.com/attachments/751174184733900801/1210605379676012554/5yac2i.jpg?ex=65eb2b1e&is=65d8b61e&hm=36abf520242e9fe005a75cc0bd1a302e2271b529a5e4a08f33c487400a804d49&",
+		"https://cdn.discordapp.com/attachments/751174184733900801/1210605426199236698/61b3og.jpg?ex=65eb2b29&is=65d8b629&hm=8cc4d88d11ef7d740dc6802fb7f8247887e68362622f1769074b398775d673d4&",
 		"https://imgur.com/wkwVjjI",
+		"https://imgur.com/CIeRgm9",
 	}
 	if sdFridayCounter >= len(imgs) {
 		sdFridayCounter = 0
