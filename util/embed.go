@@ -46,6 +46,7 @@ func RandomSDFridayMemeImage() string {
 		"https://imgur.com/l0y0w9c",
 		"https://imgur.com/wkwVjjI",
 		"https://imgur.com/CIeRgm9",
+		"https://imgur.com/7h7iuvK",
 	}
 	if sdFridayCounter >= len(imgs) {
 		sdFridayCounter = 0
