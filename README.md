@@ -1,3 +1,18 @@
+# TBD-BOT
+Because I couldn't think of a name at time of writing the code.
+
+## Features
+- Vetting system
+  - Verification and role assigning (/sdverify)
+  - Vetting response's secret code detector (the INRI code)
+  - Welcome message
+- Daily Catholic
+  - Office of Readings
+  - Liturgical celebration for today
+  - Friday abstinence memes
+- Q&A
+  - #religious-questions, #religious-discussions, #religious-discussions-2, and #answered-questions system where, as the name implies, answered questions will be moved to #answered-questions so that unanswered questions can have more exposure.
+- and other fun stuffs 
 
 ## [![Repography logo](https://images.repography.com/logo.svg)](https://repography.com) / Recent activity [![Time period](https://images.repography.com/26965455/christiansoetanto/tbd-bot/recent-activity/XSKu8NuvUO-wMkvxmAk0-Sh04dEgjpwow1r37BcSWVk/ZHy8hl1p33C5CZb9geQ1DTotvDo6YiFPQ9owxkhS1qU_badge.svg)](https://repography.com)
 [![Timeline graph](https://images.repography.com/26965455/christiansoetanto/tbd-bot/recent-activity/XSKu8NuvUO-wMkvxmAk0-Sh04dEgjpwow1r37BcSWVk/ZHy8hl1p33C5CZb9geQ1DTotvDo6YiFPQ9owxkhS1qU_timeline.svg)](https://github.com/christiansoetanto/tbd-bot/commits)
