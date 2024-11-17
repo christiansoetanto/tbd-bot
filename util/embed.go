@@ -2,6 +2,8 @@ package util
 
 import (
 	"github.com/bwmarrin/discordgo"
+	"math/rand"
+	"time"
 )
 
 type ImageUrl string
@@ -16,7 +18,6 @@ const (
 var sdCounter = 0
 var tsCounter = 0
 var cmCounter = 0
-var sdFridayCounter = 0
 
 func RandomSDWelcomeImage() string {
 	welcomeImageURL := "https://cdn.discordapp.com/attachments/751174152588623912/976921809607880714/You_Doodle_2022-05-19T18_58_15Z.jpg"
@@ -48,11 +49,9 @@ func RandomSDFridayMemeImage() string {
 		"https://imgur.com/CIeRgm9",
 		"https://imgur.com/7h7iuvK",
 	}
-	if sdFridayCounter >= len(imgs) {
-		sdFridayCounter = 0
-	}
-	img := imgs[sdFridayCounter]
-	sdFridayCounter++
+	rand.Seed(time.Now().UnixNano())
+	randomIndex := rand.Intn(len(imgs))
+	img := imgs[randomIndex]
 	return img
 }
 
