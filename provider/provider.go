@@ -14,6 +14,14 @@ type provider struct {
 	AppConfig config.AppConfig
 }
 
+func (p *provider) GetRoles(ctx context.Context, userId string, guildId string) ([]string, error) {
+	return p.Dbms.TursoDb.GetRoles(ctx, userId, guildId)
+}
+
+func (p *provider) InsertRoles(ctx context.Context, userId string, guildId string, roles []string) error {
+	return p.Dbms.TursoDb.InsertRoles(ctx, userId, guildId, roles)
+}
+
 type Resource struct {
 	AppConfig config.AppConfig
 	Database  *database.Obj
@@ -25,6 +33,8 @@ type Provider interface {
 	GetLatestQuestion(ctx context.Context, userId string, guildId string) (domain.Question, error)
 	GetPoll(ctx context.Context, pollId string) (domain.Poll, error)
 	UpsertPoll(ctx context.Context, poll domain.Poll) error
+	InsertRoles(ctx context.Context, userId string, guildId string, roles []string) error
+	GetRoles(ctx context.Context, userId string, guildId string) ([]string, error)
 }
 
 var obj Provider
