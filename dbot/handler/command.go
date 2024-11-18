@@ -19,6 +19,7 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 		domain.FeatureKeySDQuestionOne:        h.sdQuestionOneCommandHandlerFunc(ctx),
 		domain.FeatureKeySDVettingQuestioning: h.sdVettingQuestioningCommandHandlerFunc(ctx),
 		domain.FeatureKeySDDetain:             h.sdDetainCommandHandlerFunc(ctx),
+		domain.FeatureKeySDUndetain:           h.sdUndetainCommandHandlerFunc(ctx),
 		domain.FeatureKeySDOfficeOfReadings:   h.sdOfficeOfReadingsCommandHandlerFunc(ctx),
 		domain.FeatureKeySDCalendar:           h.sdCalendarCommandHandlerFunc(ctx),
 		domain.FeatureKeyCMQuestionOne:        h.cmQuestionOneCommandHandlerFunc(ctx),
@@ -229,6 +230,18 @@ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.Applicat
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "message",
 					Description: "message",
+					Required:    true,
+				},
+			},
+		},
+		{
+			Name:        domain.FeatureKeySDUndetain,
+			Description: "undetain",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionUser,
+					Name:        "user",
+					Description: "user to undetain",
 					Required:    true,
 				},
 			},
