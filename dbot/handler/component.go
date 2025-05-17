@@ -87,7 +87,7 @@ func (h *handler) cmPollVoteHandlerFunc(ctx context.Context) func(s *discordgo.S
 			return err
 		}
 		_, err = s.ChannelMessageEditComplex(&discordgo.MessageEdit{
-			Components: oldMessage.Components,
+			Components: &oldMessage.Components,
 			ID:         pollId,
 			Channel:    channelId,
 			Embed:      buildPollUI(poll),

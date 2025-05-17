@@ -8,7 +8,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.3.7
 	github.com/PuerkitoBio/goquery v1.8.1
 	github.com/avast/retry-go/v4 v4.5.0
-	github.com/bwmarrin/discordgo v0.27.0
+	github.com/bwmarrin/discordgo v0.28.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/xid v1.4.0
 	github.com/rs/zerolog v1.29.0

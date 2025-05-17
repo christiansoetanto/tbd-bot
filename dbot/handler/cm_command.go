@@ -170,7 +170,7 @@ func (h *handler) cmPollCommandHandlerFunc(ctx context.Context) func(s *discordg
 			return err
 		}
 		_, err = s.ChannelMessageEditComplex(&discordgo.MessageEdit{
-			Components: []discordgo.MessageComponent{
+			Components: &[]discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.SelectMenu{

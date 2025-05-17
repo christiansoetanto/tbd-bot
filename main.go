@@ -73,7 +73,10 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 	//prov.HelloWorld(ctx)
 	// Wait here until CTRL-C or other term signal is received.
 	logv2.Debug(ctx, logv2.Info, "Session is now running.  Press CTRL-C to exit.")
@@ -91,7 +94,7 @@ func main() {
 	}()
 	sc := make(chan os.Signal, 1)
 	//syscall.SIGTERM,
-	signal.Notify(sc, syscall.SIGINT)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
 	<-sc
 
 	logv2.Debug(ctx, logv2.Info, "Gracefully shutting down.")
