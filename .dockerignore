@@ -1,6 +1,0 @@
-# Ignore Go build artifacts
-/bin
-/pkg
-
-# Ignore version control files
-.git
