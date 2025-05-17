@@ -11,6 +11,7 @@ import (
 	"github.com/christiansoetanto/tbd-bot/logv2"
 	"github.com/christiansoetanto/tbd-bot/provider"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -67,9 +68,27 @@ func main() {
 		database.Close(ctx)
 	}()
 
+	// Health check endpoint
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
 	//prov.HelloWorld(ctx)
 	// Wait here until CTRL-C or other term signal is received.
 	logv2.Debug(ctx, logv2.Info, "Session is now running.  Press CTRL-C to exit.")
+	// Start HTTP server in a goroutine
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // Default port for Azure App Service
+	}
+
+	go func() {
+		logv2.Debug(ctx, logv2.Info, fmt.Sprintf("Starting HTTP server on port %s", port))
+		if err := http.ListenAndServe(":"+port, nil); err != nil {
+			logv2.Error(ctx, err, "HTTP server failed")
+		}
+	}()
 	sc := make(chan os.Signal, 1)
 	//syscall.SIGTERM,
 	signal.Notify(sc, syscall.SIGINT)
