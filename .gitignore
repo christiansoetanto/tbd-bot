@@ -21,3 +21,8 @@ vendor/
 # Go workspace file
 go.work
 
+LogFiles/
+
+webapp_logs.zip
+deployments/
+.idea/
