@@ -38,6 +38,7 @@ func (p *provider) GetPoll(ctx context.Context, pollId string) (domain.Poll, err
 func (p *provider) UpsertPoll(ctx context.Context, poll domain.Poll) error {
 	ctx = logv2.InitFuncContext(ctx)
 	err := p.Dbms.FirestoreDb.UpsertPoll(ctx, buildDbmsPoll(poll))
+	p.Dbms.TursoDb
 	if err != nil {
 		return err
 	}

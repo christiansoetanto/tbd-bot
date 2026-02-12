@@ -369,6 +369,12 @@ func (h *handler) sdDetainCommandHandlerFunc(ctx context.Context) func(s *discor
 			return err
 		}
 
+		err = h.Provider.InsertRoles(ctx, i.GuildID, user.ID, member.Roles)
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction, err)
+			return err
+		}
 		wg := sync.WaitGroup{}
 		for _, role := range member.Roles {
 			wg.Add(1)
@@ -516,6 +522,107 @@ func (h *handler) sdCalendarCommandHandlerFunc(ctx context.Context) func(s *disc
 		}
 		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 			Embeds: util.EmbedsBuilder("", ":white_check_mark:"),
+		})
+
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction, err)
+			return err
+		}
+
+		logv2.Debug(ctx, logv2.Info, logv2.Finish)
+		return nil
+	}
+}
+func (h *handler) sdUndetainCommandHandlerFunc(ctx context.Context) func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	ctx = logv2.InitRequestContext(ctx)
+	ctx = logv2.InitFuncContext(ctx)
+	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Flags: discordgo.MessageFlagsEphemeral,
+			},
+		})
+		if err != nil {
+			logv2.Error(ctx, err)
+			return err
+		}
+
+		guild, ok := h.Config.GuildConfig[config.GuildId(i.GuildID)]
+		if !ok {
+			e := errors.New("guild is not found")
+			logv2.Error(ctx, e, i)
+			reportInteractionError(ctx, s, i.Interaction, e)
+			return e
+		}
+		if !guild.SDQuestionOneSetting.Enabled {
+			logv2.Debug(ctx, logv2.Info, "SDQuestionOne is not enabled")
+			return nil
+		}
+		if !isMod(ctx, s, guild, i.Member.User.ID) {
+			_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+				Embeds: util.EmbedsBuilder("", fmt.Sprintf("You are not allowed to use this.")),
+			})
+			if err != nil {
+				logv2.Error(ctx, err)
+				return err
+			}
+			return nil
+		}
+		options := i.ApplicationCommandData().Options
+		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(options))
+		for _, opt := range options {
+			optionMap[opt.Name] = opt
+		}
+
+		userOpt, ok := optionMap["user"]
+		if !ok {
+			e := errors.New("user option is not found")
+			logv2.Error(ctx, e, options)
+			reportInteractionError(ctx, s, i.Interaction, e)
+			return e
+		}
+		user := userOpt.UserValue(s)
+		member, err := s.GuildMember(i.GuildID, user.ID)
+		if err != nil {
+			return err
+		}
+
+		err = s.GuildMemberRoleAdd(i.GuildID, user.ID, guild.Role.Detained)
+		if err != nil {
+			logv2.Error(ctx, err, fmt.Sprintf("failed to add role %s to user %s", guild.Role.Detained, user.ID))
+			reportInteractionError(ctx, s, i.Interaction, err)
+			return err
+		}
+
+		err = h.Provider.InsertRoles(ctx, i.GuildID, user.ID, member.Roles)
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction, err)
+			return err
+		}
+		wg := sync.WaitGroup{}
+		for _, role := range member.Roles {
+			wg.Add(1)
+			go func(guildId, userId, role string) {
+				defer wg.Done()
+				err = s.GuildMemberRoleRemove(guildId, userId, role)
+				if err != nil {
+					logv2.Error(ctx, err, fmt.Sprintf("failed to remove role %s to user %s", role, userId))
+				}
+			}(i.GuildID, user.ID, role)
+		}
+		wg.Wait()
+
+		if err != nil {
+			logv2.Error(ctx, err)
+			reportInteractionError(ctx, s, i.Interaction, err)
+			return err
+		}
+
+		_, err = s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
+			Embeds: util.EmbedsBuilder("", "Done. Please check #detained"),
 		})
 
 		if err != nil {
