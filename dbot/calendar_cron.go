@@ -19,7 +19,8 @@ func (u *usecase) liturgicalCalendarCronJob(ctx context.Context) func() {
 		for _, config := range u.Config.GuildConfig {
 			if config.RegisteredFeature[domain.FeatureKeyCalendarCron] {
 				var msg string
-				if isMentionLatinCath {
+				if false && isMentionLatinCath {
+					//if isMentionLatinCath {
 					msg = fmt.Sprintf("<@&%s>", config.SDVerifySetting.ReligionRoleMap[domain.ReligionRoleKeyLatinCatholic])
 				}
 				_, err = u.Session.ChannelMessageSendComplex(config.Channel.LiturgicalCalendarDiscussion, &discordgo.MessageSend{
