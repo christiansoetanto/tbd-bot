@@ -8,6 +8,8 @@ type RegisteredFeature map[string]bool
 type AppConfig struct {
 	DevMode                    bool
 	FirebaseServiceAccountJson string
+	TursoAuth                  string
+	TursoName                  string
 }
 
 type Config struct {
