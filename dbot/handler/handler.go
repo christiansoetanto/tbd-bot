@@ -51,4 +51,3 @@ func (h *handler) GetHandlers(ctx context.Context) []interface{} {
 		util.DecorateEventHandler("invalid_vetting_response", h.invalidVettingResponseHandler(ctx)),
 	}
 }
-

@@ -141,5 +141,3 @@ func DecorateEventHandler[T any](name string, fn func(s *discordgo.Session, even
 		RecordHandlerExecution(name, start, nil)
 	}
 }
-
-

@@ -141,4 +141,3 @@ func setupRoutes() http.Handler {
 	})
 	return mux
 }
-
