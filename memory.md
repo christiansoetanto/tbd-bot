@@ -36,3 +36,17 @@
 - `PORT`: HTTP health check port (Default `8080`).
 - `FIREBASE_CONFIG`: Service account JSON string for Firebase/Firestore.
 - `ROMCAL_API_FUNCTIONS_URL`: Cloud Function URL for calendar data.
+- `GOMEMLIMIT`: Soft memory limit for Go garbage collection (required for Docker).
+- `GF_SECURITY_ADMIN_PASSWORD`: Admin password for Grafana.
+
+## Deployment & Monitoring (Mac Mini)
+- **Deployment**: Automated via GitHub Actions (`.github/workflows/deploy.yml`) targeting a local `self-hosted` runner on an M4 Mac Mini.
+- **Infrastructure**: Containerized via a multi-stage `Dockerfile` (`golang:1.22-alpine` with `CGO_ENABLED=0` and `wget` healthcheck) and orchestrated via `docker-compose.yml`.
+- **Secrets Management**: The `.env` file is excluded from Git and injected directly from `~/tbd-bot-secrets/.env` on the Mac Mini runner to prevent unauthorized PR exfiltration.
+- **Data Safety**: Uses Docker named volumes (`prometheus_data`, `grafana_data`) to survive reboots without macOS permission loops. Prometheus is strictly limited to 14 days or 1GB retention.
+- **Monitoring (Prometheus/Grafana)**:
+  - Custom HTTP `/metrics` server running on port 8080.
+  - **RED Metrics**: Manual timer decorators wrap Discord event handlers (`tbd_bot_handler_duration_seconds`, `tbd_bot_handler_requests_total`).
+  - **Business Counters**: Extensively tracks `tbd_bot_cron_executions_total`, `tbd_bot_qa_moves_total`, `tbd_bot_users_vetted_total`, etc.
+  - **Dashboards as Code**: Grafana is provisioned via IaC to auto-load datasources and `bot-dashboard.json`.
+  - **Lifecycle**: Uses a graceful `SIGINT`/`SIGTERM` OS trap to explicitly call `discordgo.Session.Close()` upon container shutdown to prevent Gateway disconnect bans.
