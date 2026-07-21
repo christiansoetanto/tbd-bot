@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o tbd-bot .
 # Final Stage (Tiny and Secure)
 FROM alpine:latest
 
-WORKDIR /root/
+WORKDIR /app/
 
 # Install ca-certificates so the bot can make HTTPS/WebSocket calls to Discord
 # tzdata is useful for timezone-aware cron jobs
@@ -34,6 +34,9 @@ EXPOSE 8080
 # Native Docker HEALTHCHECK using wget against the /metrics endpoint
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/metrics || exit 1
+
+# Run as non-root user
+USER nobody:nobody
 
 CMD ["./tbd-bot"]
 

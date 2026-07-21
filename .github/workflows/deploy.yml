@@ -25,7 +25,7 @@ jobs:
       - name: Post-deployment health check
         run: |
           echo "Waiting for container to become healthy..."
-          timeout=60
+          timeout=120
           elapsed=0
           until [ "$elapsed" -ge "$timeout" ]; do
             status=$(docker inspect --format='{{json .State.Health.Status}}' tbd-bot 2>/dev/null || echo '"unknown"')

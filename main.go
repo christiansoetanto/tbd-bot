@@ -115,13 +115,26 @@ func gracefulShutdown(ctx context.Context, srv *http.Server, session DiscordClos
 	}
 
 	if session != nil {
-		if err := session.Close(); err != nil {
-			logv2.Error(ctx, err, "Discord session close error")
-			if firstErr == nil {
-				firstErr = err
+		sessionErrChan := make(chan error, 1)
+		go func() {
+			sessionErrChan <- session.Close()
+		}()
+
+		select {
+		case err := <-sessionErrChan:
+			if err != nil {
+				logv2.Error(ctx, err, "Discord session close error")
+				if firstErr == nil {
+					firstErr = err
+				}
+			} else {
+				logv2.Debug(ctx, logv2.Info, "Discord session closed successfully")
 			}
-		} else {
-			logv2.Debug(ctx, logv2.Info, "Discord session closed successfully")
+		case <-shutdownCtx.Done():
+			logv2.Error(ctx, shutdownCtx.Err(), "Discord session close timed out")
+			if firstErr == nil {
+				firstErr = shutdownCtx.Err()
+			}
 		}
 	}
 

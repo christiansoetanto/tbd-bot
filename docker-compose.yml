@@ -13,7 +13,7 @@ services:
       - GOMEMLIMIT=200MiB
       - PORT=8080
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     mem_limit: 256m
     deploy:
       resources:

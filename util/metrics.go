@@ -125,10 +125,12 @@ func RecordHandlerExecution(handlerName string, startTime time.Time, err error) 
 
 // DecorateInteractionHandler wraps an interaction command handler returning an error with RED metrics observation.
 func DecorateInteractionHandler(name string, fn func(s *discordgo.Session, i *discordgo.InteractionCreate) error) func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
-	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+	return func(s *discordgo.Session, i *discordgo.InteractionCreate) (err error) {
 		start := time.Now()
-		err := fn(s, i)
-		RecordHandlerExecution(name, start, err)
+		defer func() {
+			RecordHandlerExecution(name, start, err)
+		}()
+		err = fn(s, i)
 		return err
 	}
 }
@@ -137,7 +139,9 @@ func DecorateInteractionHandler(name string, fn func(s *discordgo.Session, i *di
 func DecorateEventHandler[T any](name string, fn func(s *discordgo.Session, event T)) func(s *discordgo.Session, event T) {
 	return func(s *discordgo.Session, event T) {
 		start := time.Now()
+		defer func() {
+			RecordHandlerExecution(name, start, nil)
+		}()
 		fn(s, event)
-		RecordHandlerExecution(name, start, nil)
 	}
 }
