@@ -23,7 +23,7 @@ To protect the local host environment and self-hosted runner from arbitrary code
 1. Open your repository on GitHub.
 2. Navigate to **Settings** -> **Actions** -> **General**.
 3. Under **Fork pull request workflows from outside collaborators**, choose **Require approval for all outside collaborators** (or disable fork PR execution on self-hosted runners).
-4. Ensure workflow jobs targeting `runs-on: self-hosted` are tied strictly to the `main` branch.
+4. Ensure workflow jobs targeting `runs-on: self-hosted` are tied strictly to the `master` branch.
 
 ## [![Repography logo](https://images.repography.com/logo.svg)](https://repography.com) / Recent activity [![Time period](https://images.repography.com/26965455/christiansoetanto/tbd-bot/recent-activity/XSKu8NuvUO-wMkvxmAk0-Sh04dEgjpwow1r37BcSWVk/ZHy8hl1p33C5CZb9geQ1DTotvDo6YiFPQ9owxkhS1qU_badge.svg)](https://repography.com)
 [![Timeline graph](https://images.repography.com/26965455/christiansoetanto/tbd-bot/recent-activity/XSKu8NuvUO-wMkvxmAk0-Sh04dEgjpwow1r37BcSWVk/ZHy8hl1p33C5CZb9geQ1DTotvDo6YiFPQ9owxkhS1qU_timeline.svg)](https://github.com/christiansoetanto/tbd-bot/commits)

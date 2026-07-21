@@ -12,7 +12,7 @@ Migrate the `tbd-bot` deployment architecture from Heroku to an M4 Mac Mini home
 ## Constraints
 - The Mac Mini must maintain persistent internet access for the Discord WebSocket session.
 - Secrets (`BOTTOKEN`, etc.) must be stored securely in a local `.env` file on the Mac Mini, and securely injected into the GitHub Actions workspace.
-- Deployments must be automated via GitHub Actions. **Self-hosted runner security must be enforced** by strictly tying workflows to the `main` branch and disabling workflows from fork Pull Requests via GitHub Repository Settings.
+- Deployments must be automated via GitHub Actions. **Self-hosted runner security must be enforced** by strictly tying workflows to the `master` branch and disabling workflows from fork Pull Requests via GitHub Repository Settings.
 - The system and application timezone must remain in UTC.
 - The bot must avoid Discord Gateway bans by implementing a graceful `SIGTERM` shutdown that calls `discordgo.Session.Close()`.
 
