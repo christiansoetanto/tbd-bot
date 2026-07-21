@@ -100,13 +100,12 @@ func gracefulShutdown(ctx context.Context, srv *http.Server, session DiscordClos
 	sig := <-sigChan
 	logv2.Debug(ctx, logv2.Info, fmt.Sprintf("Received signal %v, shutting down gracefully...", sig))
 
-	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
 	var firstErr error
 
 	if srv != nil {
-		if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		httpCtx, httpCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer httpCancel()
+		if err := srv.Shutdown(httpCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logv2.Error(ctx, err, "HTTP server shutdown error")
 			firstErr = err
 		} else {
@@ -115,6 +114,9 @@ func gracefulShutdown(ctx context.Context, srv *http.Server, session DiscordClos
 	}
 
 	if session != nil {
+		sessionCtx, sessionCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer sessionCancel()
+
 		sessionErrChan := make(chan error, 1)
 		go func() {
 			sessionErrChan <- session.Close()
@@ -130,10 +132,10 @@ func gracefulShutdown(ctx context.Context, srv *http.Server, session DiscordClos
 			} else {
 				logv2.Debug(ctx, logv2.Info, "Discord session closed successfully")
 			}
-		case <-shutdownCtx.Done():
-			logv2.Error(ctx, shutdownCtx.Err(), "Discord session close timed out")
+		case <-sessionCtx.Done():
+			logv2.Error(ctx, sessionCtx.Err(), "Discord session close timed out")
 			if firstErr == nil {
-				firstErr = shutdownCtx.Err()
+				firstErr = sessionCtx.Err()
 			}
 		}
 	}

@@ -14,7 +14,7 @@ Because I couldn't think of a name at time of writing the code.
   - #religious-questions, #religious-discussions, #religious-discussions-2, and #answered-questions system where, as the name implies, answered questions will be moved to #answered-questions so that unanswered questions can have more exposure.
 ## Monitoring & Grafana Access
 Grafana is exposed locally on port `3000` (bound to `127.0.0.1:3000` for security):
-- Local URL: `http://127.0.0.1:3000` (or `http://<mac-mini-ip>:3000` within local network)
+- Local URL: `http://127.0.0.1:3000` (accessible only from the Mac Mini itself; Grafana is bound to localhost for security)
 - Credentials: Default `admin` / `admin` (change upon first login or set via `.env`)
 - Pre-configured Grafana dashboard auto-loaded from `grafana/provisioning/dashboards/bot-dashboard.json`.
 
