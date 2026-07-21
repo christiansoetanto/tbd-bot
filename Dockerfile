@@ -25,6 +25,9 @@ WORKDIR /app/
 # tzdata is useful for timezone-aware cron jobs
 RUN apk --no-cache add ca-certificates tzdata
 
+# Enforce UTC timezone as per spec
+ENV TZ=UTC
+
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/tbd-bot .
 

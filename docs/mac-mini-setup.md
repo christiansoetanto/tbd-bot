@@ -1,6 +1,6 @@
 # Mac Mini Self-Hosted Runner Setup Guide
 
-Before merging the migration branch (`feature/mac-mini-migration`) into `main`, you **must** perform these manual setup steps on the Mac Mini. If you fail to do this, the GitHub Action will hang indefinitely waiting for a runner that does not exist, and the deployment will fail due to missing secrets.
+Before merging the migration branch (`feature/mac-mini-migration`) into `master`, you **must** perform these manual setup steps on the Mac Mini. If you fail to do this, the GitHub Action will hang indefinitely waiting for a runner that does not exist, and the deployment will fail due to missing secrets.
 
 ## 1. Register the Mac Mini Runner
 You must connect your Mac Mini to GitHub so it can listen for deployment webhooks.
@@ -65,4 +65,4 @@ sudo pmset -c sleep 0 displaysleep 0 disksleep 0
 ---
 
 ### You are now ready to deploy!
-You may now approve and merge the `feature/mac-mini-migration` branch into `main`. The Mac Mini will automatically detect the push, inject the secrets, build the Docker images, and launch the bot and monitoring stack.
+You may now approve and merge the `feature/mac-mini-migration` branch into `master`. The Mac Mini will automatically detect the push, inject the secrets, build the Docker images, and launch the bot and monitoring stack.

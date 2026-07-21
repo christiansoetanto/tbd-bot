@@ -279,7 +279,7 @@ func TestDeployWorkflow(t *testing.T) {
 	content := string(data)
 
 	requiredSubstrings := []string{
-		"main",
+		"master",
 		"self-hosted",
 		"cancel-in-progress: true",
 		"docker-compose up -d --build",

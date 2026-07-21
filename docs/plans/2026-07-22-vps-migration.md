@@ -11,7 +11,7 @@ Migrate the `tbd-bot` deployment architecture from Heroku to an M4 Mac Mini home
 ## Global Constraints
 - The Mac Mini must maintain persistent internet access for the Discord WebSocket session.
 - Secrets (`BOTTOKEN`, etc.) must be stored securely in a local `.env` file on the Mac Mini, and securely injected into the GitHub Actions workspace.
-- Deployments must be automated via GitHub Actions. **Self-hosted runner security must be enforced** by strictly tying workflows to the `main` branch and disabling workflows from fork Pull Requests via GitHub Repository Settings.
+- Deployments must be automated via GitHub Actions. **Self-hosted runner security must be enforced** by strictly tying workflows to the `master` branch and disabling workflows from fork Pull Requests via GitHub Repository Settings.
 - The system and application timezone must remain in UTC.
 - The bot must avoid Discord Gateway bans by implementing a graceful `SIGTERM` shutdown that calls `discordgo.Session.Close()`.
 
@@ -94,7 +94,7 @@ flowchart TD
 **Files:** Modify `main.go`
 **Write-scope:** `main.go`
 **Consumes:** Discordgo session initialization.
-**Produces:** OS signal trapping for `SIGINT` and `SIGTERM` that explicitly calls `discordgo.Session.Close()` before exiting, preventing Gateway ban loops.
+**Produces:** OS signal trapping for `SIGINT` and `SIGTERM` that explicitly calls `discordgo.Session.Close()` before exiting, preventing Gateway ban loops. HTTP server and Discord session each get independent 5-second timeout contexts to prevent one from starving the other. Discord `Close()` runs in a goroutine with a `select` to enforce the timeout.
 **Seams:** OS process lifecycle.
 **Tests:** Trigger a manual SIGINT in tests and verify `Close()` is called (MUST fail first).
 **Model tier:** flash
@@ -105,7 +105,7 @@ flowchart TD
 **Files:** Modify `Dockerfile`
 **Write-scope:** `Dockerfile`
 **Consumes:** Go source code from Wave 1
-**Produces:** A multi-stage Dockerfile compiling a static Go binary using `golang:1.22-alpine` with `CGO_ENABLED=0`. Includes a native Docker `HEALTHCHECK` using `wget` against `:8080/metrics`.
+**Produces:** A multi-stage Dockerfile compiling a static Go binary using `golang:1.22-alpine` with `CGO_ENABLED=0`. Includes a native Docker `HEALTHCHECK` using `wget` against `:8080/metrics`. Runs as `USER nobody:nobody` (non-root). Sets `ENV TZ=UTC`.
 **Seams:** Build boundary — must compile successfully.
 **Tests:** Docker build execution and running `docker inspect` to verify health check syntax.
 **Model tier:** flash
@@ -114,7 +114,7 @@ flowchart TD
 **Files:** Modify `docker-compose.yml`, create `prometheus/prometheus.yml`, `grafana/provisioning/datasources/datasource.yml`, `grafana/provisioning/dashboards/dashboard-provider.yml`, `.env.example`
 **Write-scope:** `docker-compose.yml`, `prometheus/`, `grafana/`, `.env.example`
 **Consumes:** Task 2.1 Image, Task 1.3 `/metrics` endpoint.
-**Produces:** Orchestrated stack for bot (with memory limits and `GOMEMLIMIT`), prometheus (with named volumes and 1GB/14d limits), and grafana (with named volumes, IaC provisioning, bound to `127.0.0.1:3000`).
+**Produces:** Orchestrated stack for bot (with memory limits and `GOMEMLIMIT`), prometheus (with named volumes and 1GB/14d limits), and grafana (with named volumes, IaC provisioning, bound to `127.0.0.1:3000`). Grafana datasource explicitly sets `uid: prometheus` to match dashboard JSON references. All ports bound to `127.0.0.1`.
 **Seams:** Orchestration boundary.
 **Tests:** Run `docker-compose config` to validate YAML before execution.
 **Model tier:** flash
@@ -143,7 +143,7 @@ flowchart TD
 **Files:** Modify `.github/workflows/deploy.yml`
 **Write-scope:** `.github/workflows/deploy.yml`
 **Consumes:** Docker Compose infrastructure from Task 2.2
-**Produces:** A GitHub Action YAML that triggers on push to `main` targeting a `self-hosted` runner, executing `docker-compose up -d --build`.
+**Produces:** A GitHub Action YAML that triggers on push to `master` targeting a `self-hosted` runner, executing `docker-compose up -d --build`. Health check timeout set to 120s to account for cold-boot Prometheus/Grafana settling.
 **Seams:** Pipeline boundary.
 **Tests:** Run `actionlint .github/workflows/deploy.yml` locally to validate syntax (MUST pass validation).
 **Model tier:** flash

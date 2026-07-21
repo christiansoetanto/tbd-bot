@@ -43,7 +43,7 @@ fi
 echo "✓ Static Dockerfile verification passed."
 
 echo "==> Verifying static Go build with CGO_ENABLED=0..."
-GOPATH="/Users/chris/go" GOCACHE="/Users/chris/Library/Caches/go-build" CGO_ENABLED=0 GOOS=linux "${GO_BIN:-go}" build -o /dev/null .
+CGO_ENABLED=0 GOOS=linux "${GO_BIN:-go}" build -o /dev/null .
 echo "✓ Go static compilation (CGO_ENABLED=0 GOOS=linux) succeeded."
 
 if command -v docker >/dev/null 2>&1; then
