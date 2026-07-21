@@ -9,6 +9,7 @@ import (
 
 func (u *usecase) fridayCronJob(ctx context.Context) func() {
 	return func() {
+		util.IncCronExecutions("friday")
 		c := util.RandomSDFridayMemeImage()
 		for _, config := range u.Config.GuildConfig {
 			if config.RegisteredFeature[domain.FeatureKeyFridayCron] {

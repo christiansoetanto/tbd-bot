@@ -11,6 +11,7 @@ import (
 
 func (u *usecase) liturgicalCalendarCronJob(ctx context.Context) func() {
 	return func() {
+		util.IncCronExecutions("calendar")
 		embed, isMentionLatinCath, err := util.GenerateCalendarEmbed()
 		if err != nil {
 			logv2.Error(ctx, err)

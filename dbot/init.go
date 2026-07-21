@@ -8,6 +8,7 @@ import (
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/dbot/handler"
 	"github.com/christiansoetanto/tbd-bot/logv2"
+	"github.com/christiansoetanto/tbd-bot/util"
 	"github.com/robfig/cron/v3"
 	"sync"
 )
@@ -46,6 +47,7 @@ func GetUsecaseObject(resource *Resource) Usecase {
 }
 
 func (u *usecase) Init(ctx context.Context) error {
+	util.InitMetrics()
 	//handlers => open conn => cron jobs
 	u.initHandlers(ctx)
 

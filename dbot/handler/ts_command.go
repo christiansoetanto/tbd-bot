@@ -124,6 +124,7 @@ func (h *handler) tsVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
+		util.IncTSUsersVetted()
 		logv2.Debug(ctx, logv2.Info, logv2.Finish)
 		return nil
 	}

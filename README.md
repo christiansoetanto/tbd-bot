@@ -12,7 +12,18 @@ Because I couldn't think of a name at time of writing the code.
   - Friday abstinence memes
 - Q&A
   - #religious-questions, #religious-discussions, #religious-discussions-2, and #answered-questions system where, as the name implies, answered questions will be moved to #answered-questions so that unanswered questions can have more exposure.
-- and other fun stuffs 
+## Monitoring & Grafana Access
+Grafana is exposed locally on port `3000` (bound to `127.0.0.1:3000` for security):
+- Local URL: `http://127.0.0.1:3000` (or `http://<mac-mini-ip>:3000` within local network)
+- Credentials: Default `admin` / `admin` (change upon first login or set via `.env`)
+- Pre-configured Grafana dashboard auto-loaded from `grafana/provisioning/dashboards/bot-dashboard.json`.
+
+## Self-Hosted Runner Security
+To protect the local host environment and self-hosted runner from arbitrary code execution via external Fork Pull Requests:
+1. Open your repository on GitHub.
+2. Navigate to **Settings** -> **Actions** -> **General**.
+3. Under **Fork pull request workflows from outside collaborators**, choose **Require approval for all outside collaborators** (or disable fork PR execution on self-hosted runners).
+4. Ensure workflow jobs targeting `runs-on: self-hosted` are tied strictly to the `main` branch.
 
 ## [![Repography logo](https://images.repography.com/logo.svg)](https://repography.com) / Recent activity [![Time period](https://images.repography.com/26965455/christiansoetanto/tbd-bot/recent-activity/XSKu8NuvUO-wMkvxmAk0-Sh04dEgjpwow1r37BcSWVk/ZHy8hl1p33C5CZb9geQ1DTotvDo6YiFPQ9owxkhS1qU_badge.svg)](https://repography.com)
 [![Timeline graph](https://images.repography.com/26965455/christiansoetanto/tbd-bot/recent-activity/XSKu8NuvUO-wMkvxmAk0-Sh04dEgjpwow1r37BcSWVk/ZHy8hl1p33C5CZb9geQ1DTotvDo6YiFPQ9owxkhS1qU_timeline.svg)](https://github.com/christiansoetanto/tbd-bot/commits)

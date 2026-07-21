@@ -21,6 +21,7 @@ import (
 
 func (u *usecase) officeOfReadingsCronJob(ctx context.Context) func() {
 	return func() {
+		util.IncCronExecutions("office_of_readings")
 		embed, err := util.GenerateOfficeOfReadingsEmbeds()
 		if err != nil {
 			return
@@ -38,6 +39,7 @@ func (u *usecase) officeOfReadingsCronJob(ctx context.Context) func() {
 
 func (u *usecase) officeOfReadingsCronJob2(ctx context.Context) func() {
 	return func() {
+		util.IncCronExecutions("office_of_readings_2")
 		ctx = logv2.InitRequestContext(ctx)
 		ctx = logv2.InitFuncContext(ctx)
 		logv2.Debug(ctx, logv2.Info, "Starting office of readings cron job")

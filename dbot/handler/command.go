@@ -3,10 +3,12 @@ package handler
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/bwmarrin/discordgo"
 	"github.com/christiansoetanto/tbd-bot/domain"
 	"github.com/christiansoetanto/tbd-bot/logv2"
-	"time"
+	"github.com/christiansoetanto/tbd-bot/util"
 )
 
 type commandHandler map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate) error
@@ -14,21 +16,21 @@ type componentHandler map[string]func(s *discordgo.Session, i *discordgo.Interac
 
 func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.ApplicationCommand, commandHandler) {
 	commandHandlers := commandHandler{
-		domain.FeatureKeyPing:                 h.pingCommandHandlerFunc(ctx),
-		domain.FeatureKeySDVerify:             h.sdVerifyCommandHandlerFunc(ctx),
-		domain.FeatureKeySDQuestionOne:        h.sdQuestionOneCommandHandlerFunc(ctx),
-		domain.FeatureKeySDVettingQuestioning: h.sdVettingQuestioningCommandHandlerFunc(ctx),
-		domain.FeatureKeySDDetain:             h.sdDetainCommandHandlerFunc(ctx),
-		domain.FeatureKeySDOfficeOfReadings:   h.sdOfficeOfReadingsCommandHandlerFunc(ctx),
-		domain.FeatureKeySDCalendar:           h.sdCalendarCommandHandlerFunc(ctx),
-		domain.FeatureKeyCMQuestionOne:        h.cmQuestionOneCommandHandlerFunc(ctx),
-		domain.FeatureKeyCMVerify:             h.cmVerifyCommandHandlerFunc(ctx),
-		domain.FeatureKeyCMPoll:               h.cmPollCommandHandlerFunc(ctx),
-		domain.FeatureKeyTSVerify:             h.tsVerifyCommandHandlerFunc(ctx),
-		domain.FeatureKeyTSQuestionOne:        h.tsQuestionOneCommandHandlerFunc(ctx),
-		domain.FeatureKeyTSDetain:             h.tsDetainCommandHandlerFunc(ctx),
-		domain.FeatureKeyTSOfficeOfReadings:   h.tsOfficeOfReadingsCommandHandlerFunc(ctx),
-		domain.FeatureKeyTSCalendar:           h.tsCalendarCommandHandlerFunc(ctx),
+		domain.FeatureKeyPing:                 util.DecorateInteractionHandler(domain.FeatureKeyPing, h.pingCommandHandlerFunc(ctx)),
+		domain.FeatureKeySDVerify:             util.DecorateInteractionHandler(domain.FeatureKeySDVerify, h.sdVerifyCommandHandlerFunc(ctx)),
+		domain.FeatureKeySDQuestionOne:        util.DecorateInteractionHandler(domain.FeatureKeySDQuestionOne, h.sdQuestionOneCommandHandlerFunc(ctx)),
+		domain.FeatureKeySDVettingQuestioning: util.DecorateInteractionHandler(domain.FeatureKeySDVettingQuestioning, h.sdVettingQuestioningCommandHandlerFunc(ctx)),
+		domain.FeatureKeySDDetain:             util.DecorateInteractionHandler(domain.FeatureKeySDDetain, h.sdDetainCommandHandlerFunc(ctx)),
+		domain.FeatureKeySDOfficeOfReadings:   util.DecorateInteractionHandler(domain.FeatureKeySDOfficeOfReadings, h.sdOfficeOfReadingsCommandHandlerFunc(ctx)),
+		domain.FeatureKeySDCalendar:           util.DecorateInteractionHandler(domain.FeatureKeySDCalendar, h.sdCalendarCommandHandlerFunc(ctx)),
+		domain.FeatureKeyCMQuestionOne:        util.DecorateInteractionHandler(domain.FeatureKeyCMQuestionOne, h.cmQuestionOneCommandHandlerFunc(ctx)),
+		domain.FeatureKeyCMVerify:             util.DecorateInteractionHandler(domain.FeatureKeyCMVerify, h.cmVerifyCommandHandlerFunc(ctx)),
+		domain.FeatureKeyCMPoll:               util.DecorateInteractionHandler(domain.FeatureKeyCMPoll, h.cmPollCommandHandlerFunc(ctx)),
+		domain.FeatureKeyTSVerify:             util.DecorateInteractionHandler(domain.FeatureKeyTSVerify, h.tsVerifyCommandHandlerFunc(ctx)),
+		domain.FeatureKeyTSQuestionOne:        util.DecorateInteractionHandler(domain.FeatureKeyTSQuestionOne, h.tsQuestionOneCommandHandlerFunc(ctx)),
+		domain.FeatureKeyTSDetain:             util.DecorateInteractionHandler(domain.FeatureKeyTSDetain, h.tsDetainCommandHandlerFunc(ctx)),
+		domain.FeatureKeyTSOfficeOfReadings:   util.DecorateInteractionHandler(domain.FeatureKeyTSOfficeOfReadings, h.tsOfficeOfReadingsCommandHandlerFunc(ctx)),
+		domain.FeatureKeyTSCalendar:           util.DecorateInteractionHandler(domain.FeatureKeyTSCalendar, h.tsCalendarCommandHandlerFunc(ctx)),
 	}
 	applicationCommands := []*discordgo.ApplicationCommand{
 		{
@@ -332,8 +334,8 @@ func (h *handler) buildComponentHandler(ctx context.Context) func(s *discordgo.S
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if i.Type == discordgo.InteractionMessageComponent {
 			handlers := componentHandler{
-				domain.ComponentKeyCMVote:       h.cmPollVoteHandlerFunc(ctx),
-				domain.ComponentKeyCMShowVoters: h.cmPollShowVotersHandlerFunc(ctx),
+				domain.ComponentKeyCMVote:       util.DecorateInteractionHandler(domain.ComponentKeyCMVote, h.cmPollVoteHandlerFunc(ctx)),
+				domain.ComponentKeyCMShowVoters: util.DecorateInteractionHandler(domain.ComponentKeyCMShowVoters, h.cmPollShowVotersHandlerFunc(ctx)),
 			}
 			if h, ok := handlers[i.MessageComponentData().CustomID]; ok {
 				err := h(s, i)
