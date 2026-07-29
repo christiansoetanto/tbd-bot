@@ -31,10 +31,10 @@ Migrate the `tbd-bot` deployment architecture from the Azure Web App `tbdbot-cic
 | 3.1  | 3    | completed | Verified `deploy.yml` with `actionlint` and `TestDeployWorkflow` in `main_test.go` |
 | 4.1  | 4    | completed | `TestDockerfileGoVersionSatisfiesGoMod` failed on `golang:1.22` vs `go 1.25.0`, passes after the bump; `scripts/verify_dockerfile.sh` now compares the two versions instead of matching a literal tag |
 | 4.2  | 4    | completed | `docs/mac-mini-setup.md` section 3 now enumerates all 7 variables read by the code plus `GF_SECURITY_ADMIN_PASSWORD`, matching `.env.example` |
-| 4.3  | 4    | not started | Blocked on Docker being installed on the Mac Mini |
-| 4.4  | 4    | not started | Blocked on 4.3 |
+| 4.3  | 4    | not started | Colima not installed on the Mac Mini yet |
+| 4.4  | 4    | not started | Blocked on 4.3; runs inside 4.6 because it uses production credentials |
 | 4.5  | 4    | not started | Blocked on 4.3; runner registration needs a token from the GitHub UI |
-| 4.6  | 4    | not started | Blocked on 4.4 and 4.5 |
+| 4.6  | 4    | not started | Blocked on 4.3 and 4.5 |
 
 ## Diagram
 
@@ -80,8 +80,8 @@ flowchart TD
   4.3 --> 4.4
   4.3 --> 4.5
   3.1 --> 4.5
-  4.4 --> 4.6
   4.5 --> 4.6
+  4.6 --> 4.4
 ```
 
 ## Wave 1
@@ -195,15 +195,16 @@ only. Wave 4 is the part that runs.
 **Produces:** A table of every variable the code reads, with the consequence of omitting each. Notes that values come from the existing Azure App Service configuration.
 **Tests:** Cross-checked against `grep -rn "Getenv" --include="*.go"`.
 
-### Task 4.3: Install Docker on the Mac Mini
-**Produces:** A working Docker daemon set to start at login, with the login requirement understood — Docker Desktop needs a logged-in GUI session, so an unattended reboot leaves the daemon down while the runner is up.
-**Tests:** `docker compose version` succeeds.
-**Needs the user's hands:** admin install.
+### Task 4.3: Install Colima on the Mac Mini
+**Produces:** A headless Docker daemon via `brew install colima docker docker-compose`, started with `colima start` and registered with `brew services start colima`. Chosen over Docker Desktop because Colima needs no logged-in GUI session and so recovers from an unattended reboot or power loss.
+**Tests:** `docker version` shows a Server section and `docker compose version` succeeds, both after a reboot with no interactive login.
+**Needs the user's hands:** brew install, reboot.
 
 ### Task 4.4: Dry Run the Stack by Hand
-**Consumes:** Task 4.3, `~/tbd-bot-secrets/.env`
+**Consumes:** Task 4.3, `~/tbd-bot-secrets/.env`, Azure stopped
 **Produces:** A real `docker compose up -d --build` on this machine — the same command `deploy.yml` runs, not a variant of it — with `tbd-bot` reaching `healthy`, Prometheus's scrape target `up`, and Grafana panels showing data.
-**Tests:** `docker inspect --format='{{json .State.Health.Status}}' tbd-bot` returns `"healthy"`; `curl localhost:8080/metrics` returns metrics; `curl localhost:9090/api/v1/targets` reports the `tbd-bot` target as `up`.
+**Tests:** `docker inspect --format='{{json .State.Health.Status}}' tbd-bot` returns `"healthy"`; `curl localhost:8080/metrics` returns metrics; `curl localhost:9090/api/v1/targets` reports the `tbd-bot` target as `up`; one slash command that reads Firestore returns real data, proving `TBDENV` and `FIREBASE_CONFIG` are right.
+**Note:** No staging bot exists, so this runs on production credentials and is itself the go-live. It is ordered after stopping Azure, not before — see task 4.6.
 
 ### Task 4.5: Register the Runner and Lock It Down
 **Consumes:** Task 4.3
@@ -212,8 +213,9 @@ only. Wave 4 is the part that runs.
 **Needs the user's hands:** registration token from the GitHub UI, `sudo`.
 
 ### Task 4.6: Cut Over From Azure
-**Consumes:** Tasks 4.4, 4.5
-**Produces:** Azure Web App `tbdbot-cicd` stopped, bot confirmed offline in Discord, branch merged to `master`, deployment green on the self-hosted runner, bot back online. Azure left stopped rather than deleted so rollback is one click.
-**Tests:** One slash command exercised end to end, with its RED metric visible in Grafana.
+**Consumes:** Tasks 4.3, 4.5 (4.4 runs inside this task)
+**Produces:** A single ordered sequence, since the dry run uses production credentials and cannot run alongside Azure: stop the Azure Web App `tbdbot-cicd` and confirm the bot offline in Discord; run task 4.4's dry run, which brings the bot back on the Mac Mini; merge to `master` and let the runner rebuild in place; confirm online with metrics in Grafana. Azure left stopped rather than deleted so rollback is one click.
+**Tests:** One slash command exercised end to end, with its RED metric visible in Grafana. Over the following days, cron jobs fire and memory stays under the 256M limit.
+**Rollback:** `docker compose down` on the Mac Mini, then **Start** the Azure app.
 **Needs the user's hands:** Azure Portal, merge approval.
 

@@ -86,25 +86,63 @@ sudo pmset -c sleep 0 displaysleep 0 disksleep 0
 The runner executes `docker compose` directly on this machine, so Docker must be
 installed and running before the first deployment.
 
-1. Install Docker Desktop for Apple Silicon (or Colima + the Docker CLI).
-2. Set Docker Desktop to **start at login**. Docker Desktop only runs while a user is
-   logged in — after a reboot that stops at the login screen, the daemon stays down
-   even though the runner is up, and deployments fail. If this machine is expected to
-   recover from power loss unattended, enable automatic login as well, or use Colima,
-   which runs without a GUI session.
-3. Confirm the compose command. `deploy.yml` uses the Compose V2 plugin form
-   (`docker compose`); Docker Desktop no longer ships the standalone V1 binary:
+**Colima, not Docker Desktop.** Docker Desktop only runs while a user is logged in, so
+a reboot that stops at the login screen leaves the daemon down while the runner is up.
+Colima runs headless as a background service and comes back on its own after a reboot
+or power loss.
+
+1. Install Colima and the Docker CLI:
    ```bash
-   docker compose version   # must succeed
+   brew install colima docker docker-compose
    ```
-   If this machine only has V1 (`docker-compose`), change `deploy.yml` and
+   The `docker-compose` formula supplies the Compose V2 CLI plugin that backs
+   `docker compose`; it is not the old V1 standalone binary.
+
+2. Start Colima and register it to start at boot:
+   ```bash
+   colima start --cpu 2 --memory 4 --disk 60
+   brew services start colima
+   ```
+
+3. Confirm both the daemon and the compose plugin:
+   ```bash
+   docker version          # must show a Server section, not just Client
+   docker compose version  # must succeed — deploy.yml uses this exact form
+   ```
+   If `docker compose` is missing but `docker-compose` works, change `deploy.yml` and
    `TestDeployWorkflow` in `main_test.go` together — the test asserts the literal
    command string.
 
-## 7. Dry Run Before Merging (CRITICAL)
-`deploy.yml` only runs on push to `master`, so without a dry run the first real
-execution of this stack happens against production Discord. Run it by hand first,
-from a checkout of `feature/mac-mini-migration`:
+4. Verify Colima survives a reboot before going further. Reboot the Mac Mini, do not
+   log in, then SSH in and run `docker version`. If the server responds, the stack
+   will recover from power loss unattended.
+
+## 7. Cut Over From Azure
+Production currently runs on the Azure Web App `tbdbot-cicd`, deployed by
+`.github/workflows/master_tbdbot-cicd.yml`. Merging this branch deletes that workflow,
+which stops future Azure deployments but **does not stop the container already
+running there**.
+
+There is no staging bot, so the dry run below uses production credentials — which
+means the dry run *is* a live bot. Two instances sharing one `BOTTOKEN` produce
+duplicate slash-command replies, duplicate cron posts (Office of Readings, Friday,
+calendar), and concurrent writes to the same Firestore collections. **Azure must be
+stopped before the dry run starts, not after it.**
+
+`deploy.yml` only fires on push to `master`, so the dry run is what proves the image
+builds, the secrets load, and the stack comes up. Do not skip it and let CI be the
+first execution.
+
+Run these in order. Pick a low-traffic window — the bot is offline between steps 1
+and 3.
+
+### 1. Stop Azure
+Azure Portal -> App Service `tbdbot-cicd` -> **Stop**. Confirm in Discord that the bot
+has gone offline before continuing. Leave the app stopped but **not deleted** — that
+keeps rollback to a single **Start** click.
+
+### 2. Dry run the stack by hand
+From a checkout of `feature/mac-mini-migration` on the Mac Mini:
 
 ```bash
 cp ~/tbd-bot-secrets/.env .env
@@ -124,32 +162,20 @@ curl -s 'localhost:9090/api/v1/targets' | grep -o '"health":"[^"]*"'
 open http://127.0.0.1:3000
 ```
 
-**Use a staging token and `TBDENV=staging` for the dry run if one is available.** With
-production values, this dry run *is* a second live bot — see the cutover step below
-before starting it with production credentials.
+Confirm the bot is back online in Discord and answers one slash command. Since this is
+production, also confirm it is reading real data — a command that reads Firestore
+proves `TBDENV` and `FIREBASE_CONFIG` are correct. Empty results mean `TBDENV` is
+wrong and the bot is pointed at empty collections.
 
-Tear the dry run down with `docker compose down` once verified.
+If anything fails, tear down with `docker compose down`, restart the Azure app to
+restore service, and fix the problem before retrying.
 
-## 8. Cut Over From Azure
-Production currently runs on the Azure Web App `tbdbot-cicd`, deployed by
-`.github/workflows/master_tbdbot-cicd.yml`. Merging this branch deletes that workflow,
-which stops future Azure deployments but **does not stop the container already
-running there**. Two instances sharing one `BOTTOKEN` produce duplicate slash-command
-replies, duplicate cron posts (Office of Readings, Friday, calendar), and concurrent
-writes to the same Firestore collections.
+### 3. Merge
+Leave the dry-run stack running and merge `feature/mac-mini-migration` into `master`.
+The runner picks up the push, injects the secrets, rebuilds, and recreates the
+containers in place. Watch the Actions log through the health-check step.
 
-Order of operations:
-
-1. Finish the dry run above and tear it down.
-2. Stop the Azure Web App `tbdbot-cicd` (Azure Portal -> the App Service -> **Stop**).
-3. Confirm in Discord that the bot has gone offline.
-4. Merge `feature/mac-mini-migration` into `master`. The runner picks up the push,
-   injects the secrets, builds the images, and starts the stack.
-5. Confirm the bot is back online, then exercise one slash command and check Grafana
-   for the corresponding RED metric.
-6. Leave the Azure app stopped (not deleted) until the Mac Mini has run cleanly for a
-   few days, so rollback is a single **Start** click.
-
-## 9. Deploy
-Once steps 1-8 are done, merge the branch. The Mac Mini detects the push, injects the
-secrets, builds the Docker images, and launches the bot and monitoring stack.
+### 4. Confirm and watch
+Check that the bot is online, exercise one slash command, and confirm its RED metric
+appears in Grafana. Over the next few days, watch that the cron jobs fire (Office of
+Readings, Friday, calendar) and that memory stays under the 256M container limit.
