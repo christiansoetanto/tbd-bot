@@ -10,9 +10,16 @@ if [ ! -f "$DOCKERFILE" ]; then
     exit 1
 fi
 
-# Check multi-stage base image
-if ! grep -q "golang:1.22-alpine" "$DOCKERFILE"; then
-    echo "ERROR: Dockerfile does not use golang:1.22-alpine"
+# Check multi-stage base image is a golang image new enough for go.mod
+if ! grep -E -q "FROM golang:[0-9]+\.[0-9]+" "$DOCKERFILE"; then
+    echo "ERROR: Dockerfile does not build from a versioned golang base image"
+    exit 1
+fi
+
+IMAGE_GO_VERSION=$(grep -E -o "FROM golang:[0-9]+\.[0-9]+" "$DOCKERFILE" | head -1 | cut -d: -f2)
+MOD_GO_VERSION=$(grep -E -o "^go [0-9]+\.[0-9]+" go.mod | head -1 | cut -d' ' -f2)
+if [ "$(printf '%s\n%s\n' "$MOD_GO_VERSION" "$IMAGE_GO_VERSION" | sort -V | head -1)" != "$MOD_GO_VERSION" ]; then
+    echo "ERROR: builder image golang:$IMAGE_GO_VERSION is older than go.mod requirement go $MOD_GO_VERSION"
     exit 1
 fi
 

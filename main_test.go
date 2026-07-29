@@ -8,6 +8,8 @@ import (
 
 	"net/http/httptest"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -136,8 +138,8 @@ func TestDockerfile_MultiStageAndHealthcheck(t *testing.T) {
 
 	dockerfile := string(content)
 
-	if !strings.Contains(dockerfile, "golang:1.22-alpine") {
-		t.Errorf("expected Dockerfile to use golang:1.22-alpine base image")
+	if !strings.Contains(dockerfile, "FROM golang:") {
+		t.Errorf("expected Dockerfile to build from a golang base image")
 	}
 
 	if !strings.Contains(dockerfile, "CGO_ENABLED=0") {
@@ -154,6 +156,54 @@ func TestDockerfile_MultiStageAndHealthcheck(t *testing.T) {
 
 	if !strings.Contains(dockerfile, "http://localhost:8080/metrics") && !strings.Contains(dockerfile, ":8080/metrics") {
 		t.Errorf("expected HEALTHCHECK to query http://localhost:8080/metrics")
+	}
+}
+
+// parseMajorMinor extracts the leading "X.Y" of a Go version string.
+func parseMajorMinor(t *testing.T, version string) (int, int) {
+	t.Helper()
+	parts := strings.Split(version, ".")
+	if len(parts) < 2 {
+		t.Fatalf("malformed go version %q", version)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		t.Fatalf("malformed major version in %q: %v", version, err)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		t.Fatalf("malformed minor version in %q: %v", version, err)
+	}
+	return major, minor
+}
+
+// The Docker build fails outright when the builder image is older than the
+// version required by go.mod, so the two must be checked against each other
+// rather than pinned to a literal tag.
+func TestDockerfileGoVersionSatisfiesGoMod(t *testing.T) {
+	goMod, err := os.ReadFile("go.mod")
+	if err != nil {
+		t.Fatalf("failed to read go.mod: %v", err)
+	}
+	modMatch := regexp.MustCompile(`(?m)^go\s+(\d+\.\d+(?:\.\d+)?)`).FindStringSubmatch(string(goMod))
+	if modMatch == nil {
+		t.Fatalf("no go directive found in go.mod")
+	}
+
+	dockerfile, err := os.ReadFile("Dockerfile")
+	if err != nil {
+		t.Fatalf("failed to read Dockerfile: %v", err)
+	}
+	imgMatch := regexp.MustCompile(`FROM\s+golang:(\d+\.\d+(?:\.\d+)?)`).FindStringSubmatch(string(dockerfile))
+	if imgMatch == nil {
+		t.Fatalf("no versioned golang base image found in Dockerfile")
+	}
+
+	modMajor, modMinor := parseMajorMinor(t, modMatch[1])
+	imgMajor, imgMinor := parseMajorMinor(t, imgMatch[1])
+
+	if imgMajor < modMajor || (imgMajor == modMajor && imgMinor < modMinor) {
+		t.Errorf("Dockerfile builder golang:%s is older than go.mod requirement go %s", imgMatch[1], modMatch[1])
 	}
 }
 

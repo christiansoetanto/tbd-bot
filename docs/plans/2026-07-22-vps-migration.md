@@ -1,7 +1,7 @@
-# Plan: Heroku to Mac Mini Migration
+# Plan: Azure App Service to Mac Mini Migration
 
 ## Goal
-Migrate the `tbd-bot` deployment architecture from Heroku to an M4 Mac Mini home server. This involves optimizing the Docker container, establishing deep application metrics (Prometheus/Grafana), and setting up automated CI/CD via a local GitHub Runner.
+Migrate the `tbd-bot` deployment architecture from the Azure Web App `tbdbot-cicd` to an M4 Mac Mini home server. This involves optimizing the Docker container, establishing deep application metrics (Prometheus/Grafana), and setting up automated CI/CD via a local GitHub Runner.
 
 ## Architecture
 - **Metrics:** `prometheus/client_golang` integrated into the existing port 8080 HTTP server. Includes business logic counters and RED decorators for Discord events.
@@ -14,6 +14,7 @@ Migrate the `tbd-bot` deployment architecture from Heroku to an M4 Mac Mini home
 - Deployments must be automated via GitHub Actions. **Self-hosted runner security must be enforced** by strictly tying workflows to the `master` branch and disabling workflows from fork Pull Requests via GitHub Repository Settings.
 - The system and application timezone must remain in UTC.
 - The bot must avoid Discord Gateway bans by implementing a graceful `SIGTERM` shutdown that calls `discordgo.Session.Close()`.
+- Only one instance may run against the production `BOTTOKEN` at a time. The Azure Web App must be stopped before the Mac Mini stack starts with production credentials.
 
 ## Progress
 
@@ -28,6 +29,12 @@ Migrate the `tbd-bot` deployment architecture from Heroku to an M4 Mac Mini home
 | 2.3  | 2    | completed | `TestDocumentation_GrafanaAndRunnerSecurity` passed in `main_test.go` & `README.md` updated |
 | 2.4  | 2    | completed | `TestGrafanaDashboardJSON` passed in `main_test.go` & valid JSON at `grafana/provisioning/dashboards/bot-dashboard.json` |
 | 3.1  | 3    | completed | Verified `deploy.yml` with `actionlint` and `TestDeployWorkflow` in `main_test.go` |
+| 4.1  | 4    | completed | `TestDockerfileGoVersionSatisfiesGoMod` failed on `golang:1.22` vs `go 1.25.0`, passes after the bump; `scripts/verify_dockerfile.sh` now compares the two versions instead of matching a literal tag |
+| 4.2  | 4    | completed | `docs/mac-mini-setup.md` section 3 now enumerates all 7 variables read by the code plus `GF_SECURITY_ADMIN_PASSWORD`, matching `.env.example` |
+| 4.3  | 4    | not started | Blocked on Docker being installed on the Mac Mini |
+| 4.4  | 4    | not started | Blocked on 4.3 |
+| 4.5  | 4    | not started | Blocked on 4.3; runner registration needs a token from the GitHub UI |
+| 4.6  | 4    | not started | Blocked on 4.4 and 4.5 |
 
 ## Diagram
 
@@ -48,6 +55,14 @@ flowchart TD
   subgraph Wave 3
     3.1["3.1: Self-Hosted Runner Deploy Action"]
   end
+  subgraph Wave 4
+    4.1["4.1: Builder Image Tracks go.mod"]
+    4.2["4.2: Complete Secrets Documentation"]
+    4.3["4.3: Install Docker"]
+    4.4["4.4: Dry Run the Stack"]
+    4.5["4.5: Register the Runner"]
+    4.6["4.6: Cut Over From Azure"]
+  end
   1.1 --> 1.2
   1.1 --> 1.3
   1.1 --> 2.1
@@ -59,6 +74,14 @@ flowchart TD
   2.2 --> 2.4
   2.3 --> 3.1
   2.4 --> 3.1
+  2.1 --> 4.1
+  4.1 --> 4.4
+  4.2 --> 4.4
+  4.3 --> 4.4
+  4.3 --> 4.5
+  3.1 --> 4.5
+  4.4 --> 4.6
+  4.5 --> 4.6
 ```
 
 ## Wave 1
@@ -105,7 +128,7 @@ flowchart TD
 **Files:** Modify `Dockerfile`
 **Write-scope:** `Dockerfile`
 **Consumes:** Go source code from Wave 1
-**Produces:** A multi-stage Dockerfile compiling a static Go binary using `golang:1.22-alpine` with `CGO_ENABLED=0`. Includes a native Docker `HEALTHCHECK` using `wget` against `:8080/metrics`. Runs as `USER nobody:nobody` (non-root). Sets `ENV TZ=UTC`.
+**Produces:** A multi-stage Dockerfile compiling a static Go binary using an alpine `golang` builder image whose version is at least the `go` directive in `go.mod`, with `CGO_ENABLED=0`. Includes a native Docker `HEALTHCHECK` using `wget` against `:8080/metrics`. Runs as `USER nobody:nobody` (non-root). Sets `ENV TZ=UTC`.
 **Seams:** Build boundary — must compile successfully.
 **Tests:** Docker build execution and running `docker inspect` to verify health check syntax.
 **Model tier:** flash
@@ -151,4 +174,48 @@ flowchart TD
 - [x] Inject the `.env` file via copying from a secure external directory outside the GitHub workspace.
 - [x] Add local `docker-compose up -d --build` step.
 - [x] Add post-deployment health check polling `docker inspect --format='{{json .State.Health.Status}}'` until it returns `"healthy"`.
+
+## Wave 4
+
+Waves 1-3 produced files. Nothing in them ever executed against Docker, because Docker
+was not installed on the Mac Mini — the Docker-related tests assert over file text
+only. Wave 4 is the part that runs.
+
+### Task 4.1: Builder Image Tracks go.mod
+**Files:** Modify `Dockerfile`, `main_test.go`, `scripts/verify_dockerfile.sh`
+**Write-scope:** `Dockerfile`, `main_test.go`, `scripts/verify_dockerfile.sh`
+**Consumes:** Task 2.1
+**Produces:** A builder image at least as new as the `go` directive in `go.mod`. The literal-tag assertion is replaced by a version comparison, so the two cannot drift apart again.
+**Tests:** `TestDockerfileGoVersionSatisfiesGoMod` (MUST fail first).
+
+### Task 4.2: Complete the Secrets Documentation
+**Files:** Modify `docs/mac-mini-setup.md`
+**Write-scope:** `docs/mac-mini-setup.md`
+**Consumes:** `.env.example`, the `os.Getenv` call sites
+**Produces:** A table of every variable the code reads, with the consequence of omitting each. Notes that values come from the existing Azure App Service configuration.
+**Tests:** Cross-checked against `grep -rn "Getenv" --include="*.go"`.
+
+### Task 4.3: Install Docker on the Mac Mini
+**Produces:** A working Docker daemon set to start at login, and a recorded answer for whether this machine has `docker compose` (V2 plugin) or `docker-compose` (V1 binary).
+**Tests:** `docker compose version` / `docker-compose --version`.
+**Needs the user's hands:** admin install.
+
+### Task 4.4: Dry Run the Stack by Hand
+**Files:** Possibly modify `.github/workflows/deploy.yml`
+**Write-scope:** `.github/workflows/deploy.yml`
+**Consumes:** Task 4.3, `~/tbd-bot-secrets/.env`
+**Produces:** A real `docker compose up -d --build` on this machine, with `tbd-bot` reaching `healthy`, Prometheus scraping it, and Grafana serving the provisioned dashboard. `deploy.yml`'s compose invocation is corrected to match whichever command exists.
+**Tests:** `docker inspect --format='{{json .State.Health.Status}}' tbd-bot` returns `"healthy"`; `curl localhost:8080/metrics` returns metrics.
+
+### Task 4.5: Register the Runner and Lock It Down
+**Consumes:** Task 4.3
+**Produces:** A registered `self-hosted` runner installed as a service, fork-PR approval required in repository settings, and sleep disabled via `pmset`.
+**Tests:** Runner shows Idle in **Settings -> Actions -> Runners**.
+**Needs the user's hands:** registration token from the GitHub UI, `sudo`.
+
+### Task 4.6: Cut Over From Azure
+**Consumes:** Tasks 4.4, 4.5
+**Produces:** Azure Web App `tbdbot-cicd` stopped, bot confirmed offline in Discord, branch merged to `master`, deployment green on the self-hosted runner, bot back online. Azure left stopped rather than deleted so rollback is one click.
+**Tests:** One slash command exercised end to end, with its RED metric visible in Grafana.
+**Needs the user's hands:** Azure Portal, merge approval.
 
