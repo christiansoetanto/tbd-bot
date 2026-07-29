@@ -332,7 +332,9 @@ func TestDeployWorkflow(t *testing.T) {
 		"master",
 		"self-hosted",
 		"cancel-in-progress: true",
-		"docker-compose up -d --build",
+		// Compose V2 plugin form. Docker Desktop no longer ships the standalone
+		// docker-compose binary, and the runner has no shell alias for it.
+		"docker compose up -d --build",
 		"docker inspect --format='{{json .State.Health.Status}}'",
 		"\"healthy\"",
 		"~/tbd-bot-secrets/.env",

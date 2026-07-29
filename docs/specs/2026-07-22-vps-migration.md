@@ -50,5 +50,7 @@ The current production host is the Azure Web App `tbdbot-cicd`, deployed by `.gi
 - Cutover is explicitly in scope. It was missing from the original plan, which ended at the pipeline being configured and left two live instances as an unhandled outcome.
 - The builder image must track `go.mod`. The pinned `golang:1.22-alpine` was older than `go 1.25.0` and the Docker build could not have succeeded; the version relationship is now asserted by `TestDockerfileGoVersionSatisfiesGoMod` rather than a literal tag.
 - The Docker-related tests are text assertions over file contents, not executions. They are not evidence that the image builds or that the stack runs; only the manual dry run on the Mac Mini is.
+- `deploy.yml` invokes Compose V2 (`docker compose`), not the standalone `docker-compose` binary, which Docker Desktop no longer ships. The dry run must use the identical command, or it would step around the most likely failure.
+- The dry run cannot prove the runner works. The `launchd` service has a minimal `PATH` and will not necessarily find the Docker CLI, so that is verified separately from the runner's own environment.
 
 **Roles touched:** none

@@ -196,21 +196,19 @@ only. Wave 4 is the part that runs.
 **Tests:** Cross-checked against `grep -rn "Getenv" --include="*.go"`.
 
 ### Task 4.3: Install Docker on the Mac Mini
-**Produces:** A working Docker daemon set to start at login, and a recorded answer for whether this machine has `docker compose` (V2 plugin) or `docker-compose` (V1 binary).
-**Tests:** `docker compose version` / `docker-compose --version`.
+**Produces:** A working Docker daemon set to start at login, with the login requirement understood — Docker Desktop needs a logged-in GUI session, so an unattended reboot leaves the daemon down while the runner is up.
+**Tests:** `docker compose version` succeeds.
 **Needs the user's hands:** admin install.
 
 ### Task 4.4: Dry Run the Stack by Hand
-**Files:** Possibly modify `.github/workflows/deploy.yml`
-**Write-scope:** `.github/workflows/deploy.yml`
 **Consumes:** Task 4.3, `~/tbd-bot-secrets/.env`
-**Produces:** A real `docker compose up -d --build` on this machine, with `tbd-bot` reaching `healthy`, Prometheus scraping it, and Grafana serving the provisioned dashboard. `deploy.yml`'s compose invocation is corrected to match whichever command exists.
-**Tests:** `docker inspect --format='{{json .State.Health.Status}}' tbd-bot` returns `"healthy"`; `curl localhost:8080/metrics` returns metrics.
+**Produces:** A real `docker compose up -d --build` on this machine — the same command `deploy.yml` runs, not a variant of it — with `tbd-bot` reaching `healthy`, Prometheus's scrape target `up`, and Grafana panels showing data.
+**Tests:** `docker inspect --format='{{json .State.Health.Status}}' tbd-bot` returns `"healthy"`; `curl localhost:8080/metrics` returns metrics; `curl localhost:9090/api/v1/targets` reports the `tbd-bot` target as `up`.
 
 ### Task 4.5: Register the Runner and Lock It Down
 **Consumes:** Task 4.3
 **Produces:** A registered `self-hosted` runner installed as a service, fork-PR approval required in repository settings, and sleep disabled via `pmset`.
-**Tests:** Runner shows Idle in **Settings -> Actions -> Runners**.
+**Tests:** Runner shows Idle in **Settings -> Actions -> Runners**, and a `workflow_dispatch` job running `docker compose version` succeeds — proving the `launchd` service's minimal `PATH` can find the Docker CLI. The dry run in 4.4 does not prove this, because it uses the interactive shell's `PATH`.
 **Needs the user's hands:** registration token from the GitHub UI, `sudo`.
 
 ### Task 4.6: Cut Over From Azure

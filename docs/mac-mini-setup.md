@@ -27,6 +27,14 @@ sudo ./svc.sh start
 ```
 The runner is now permanently listening in the background.
 
+**Confirm the runner can see Docker.** The service runs under `launchd` with a minimal
+`PATH`, not the `PATH` from your interactive shell, and Docker Desktop installs the CLI
+into `/usr/local/bin` or `~/.docker/bin`. A dry run from Terminal proves nothing about
+this. Verify it from the runner's own environment — the simplest check is a throwaway
+`workflow_dispatch` job that runs `docker compose version`. If it cannot find `docker`,
+add the directory to `PATH` in the runner's `.env` file (`actions-runner/.env`) and
+restart the service with `sudo ./svc.sh stop && sudo ./svc.sh start`.
+
 ## 3. Create the Secrets File
 To protect your Discord token from malicious pull requests, the `.env` file is intentionally excluded from the Git repository and the GitHub Actions workspace. The CI pipeline is hardcoded to copy the `.env` file from a secure, external directory on your Mac Mini (`~/tbd-bot-secrets/.env`).
 
@@ -79,13 +87,19 @@ The runner executes `docker compose` directly on this machine, so Docker must be
 installed and running before the first deployment.
 
 1. Install Docker Desktop for Apple Silicon (or Colima + the Docker CLI).
-2. Set Docker Desktop to **start at login**, otherwise a reboot leaves the bot down
-   until someone opens the app.
-3. Confirm which compose command exists on this machine — the workflow must match it:
+2. Set Docker Desktop to **start at login**. Docker Desktop only runs while a user is
+   logged in — after a reboot that stops at the login screen, the daemon stays down
+   even though the runner is up, and deployments fail. If this machine is expected to
+   recover from power loss unattended, enable automatic login as well, or use Colima,
+   which runs without a GUI session.
+3. Confirm the compose command. `deploy.yml` uses the Compose V2 plugin form
+   (`docker compose`); Docker Desktop no longer ships the standalone V1 binary:
    ```bash
-   docker compose version   # Compose V2, the plugin form used by deploy.yml
-   docker-compose --version # Compose V1, the standalone binary
+   docker compose version   # must succeed
    ```
+   If this machine only has V1 (`docker-compose`), change `deploy.yml` and
+   `TestDeployWorkflow` in `main_test.go` together — the test asserts the literal
+   command string.
 
 ## 7. Dry Run Before Merging (CRITICAL)
 `deploy.yml` only runs on push to `master`, so without a dry run the first real
@@ -95,9 +109,19 @@ from a checkout of `feature/mac-mini-migration`:
 ```bash
 cp ~/tbd-bot-secrets/.env .env
 docker compose up -d --build
+
+# Must print "healthy" — retry for up to a minute while it starts.
 docker inspect --format='{{json .State.Health.Status}}' tbd-bot
+
+# Must print Prometheus metrics, not an error.
 curl -s localhost:8080/metrics | head
-open http://127.0.0.1:3000   # Grafana; dashboard should already be provisioned
+
+# Must print "up". Prometheus reaches the bot as tbd-bot:8080 over the compose
+# network; if this says "down", every Grafana panel will read "No data".
+curl -s 'localhost:9090/api/v1/targets' | grep -o '"health":"[^"]*"'
+
+# Grafana: log in and confirm the dashboard loaded and its panels have data.
+open http://127.0.0.1:3000
 ```
 
 **Use a staging token and `TBDENV=staging` for the dry run if one is available.** With
