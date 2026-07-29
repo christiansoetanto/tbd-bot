@@ -22,22 +22,29 @@ By default, if you just run `./run.sh`, the runner will die the moment you close
 
 While still inside the `actions-runner` directory on your Mac Mini, run:
 ```bash
-sudo ./svc.sh install
-sudo ./svc.sh start
+./svc.sh install
+./svc.sh start
+./svc.sh status
 ```
-The runner is now permanently listening in the background.
 
-**Install the service as the same user that installed Colima** (`chris`). `svc.sh`
-installs the runner as a LaunchDaemon; two pieces of the Docker setup are user-scoped
-and break if the daemon runs as anyone else:
+**No `sudo`** — on macOS `svc.sh` refuses to run under it (`Must not run with sudo`).
+That is not a quirk to work around: the macOS runner installs a **LaunchAgent** at
+`~/Library/LaunchAgents/actions.runner.<org>-<repo>.<name>.plist`, which runs as the
+logged-in user. Only the Linux runner uses a root systemd unit.
+
+Because it is a LaunchAgent it runs as the user who installed it, which is also the
+user that owns the two user-scoped pieces of the Docker setup:
 
 - `~/.docker/config.json`, which is what makes `docker compose` resolve at all.
 - The Colima VM and its socket, under `~/.colima/`.
 
-**Confirm the runner can see Docker.** The daemon gets a minimal `PATH` — not the one
-from your interactive shell — and Homebrew's CLI lives in `/opt/homebrew/bin`. A dry
-run from Terminal proves nothing about this. Verify from the runner's own environment
-with a throwaway `workflow_dispatch` job:
+So install the runner as the **same user that installed Colima**, and the ownership
+side takes care of itself.
+
+**Confirm the runner can see Docker anyway.** LaunchAgents get a minimal `PATH` — not
+the one from your interactive shell — and Homebrew's CLI lives in `/opt/homebrew/bin`,
+which is usually absent from it. A dry run from Terminal proves nothing about this.
+Verify from the runner's own environment with a throwaway `workflow_dispatch` job:
 
 ```yaml
 - run: |
@@ -112,10 +119,11 @@ and LaunchAgents only run inside a user login session. FileVault is enabled on t
 Mini, so the disk needs a password at boot and automatic login is not possible. After a
 reboot or power loss:
 
-- The GitHub runner **is** up — `sudo ./svc.sh install` creates a LaunchDaemon, which
-  runs at boot with no login.
 - Colima and the containers are **down** until someone logs in.
-- Deployments in that window fail with `cannot connect to the Docker daemon`.
+- The GitHub runner is down too — it is also a LaunchAgent, so it does not pick up
+  queued jobs until login either. That is the saving grace: the runner cannot fire a
+  deployment against a dead Docker daemon, because both wake at the same time.
+- The bot is simply offline for the whole pre-login window.
 
 The options are to leave it as is and log in after a reboot, or to disable FileVault and
 enable automatic login, which trades disk encryption for unattended recovery. This
@@ -126,9 +134,11 @@ Once someone logs in, recovery is automatic the rest of the way: Colima starts v
 LaunchAgent and the containers come back on their own, because every service in
 `docker-compose.yml` is `restart: unless-stopped`.
 
-**After any reboot, the order is: log in, confirm `docker version` answers, then re-run
-any deploy that failed while the machine was down.** A deploy that fires before login
-hits a dead daemon, and the failure reads like a code problem when it is not.
+**After any reboot: log in, then confirm `docker version` answers before trusting the
+stack.** Colima and the runner both start from LaunchAgents at login, but Colima needs
+a few seconds to boot its VM — a job that lands in that gap fails with `cannot connect
+to the Docker daemon`, which reads like a code problem when it is not. Re-running the
+deploy is the fix.
 
 1. Install Colima and the Docker CLI:
    ```bash
