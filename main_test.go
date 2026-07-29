@@ -230,7 +230,7 @@ func TestDockerComposeAndMonitoringSetup(t *testing.T) {
 		"prometheus",
 		"grafana",
 		"GOMEMLIMIT=",
-		"127.0.0.1:3000",
+		"127.0.0.1:9400:3000",
 		"--storage.tsdb.retention.time=14d",
 		"--storage.tsdb.retention.size=1GB",
 		"prometheus_data:",
@@ -285,7 +285,7 @@ func TestDocumentation_GrafanaAndRunnerSecurity(t *testing.T) {
 	readme := string(readmeBytes)
 
 	requiredSubstrings := []string{
-		"127.0.0.1:3000",
+		"127.0.0.1:9400",
 		"Grafana",
 		"Fork",
 		"runner",

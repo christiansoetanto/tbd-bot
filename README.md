@@ -13,11 +13,11 @@ Because I couldn't think of a name at time of writing the code.
 - Q&A
   - #religious-questions, #religious-discussions, #religious-discussions-2, and #answered-questions system where, as the name implies, answered questions will be moved to #answered-questions so that unanswered questions can have more exposure.
 ## Monitoring & Grafana Access
-Grafana is bound to `127.0.0.1:3000`, so it is reachable from the Mac Mini itself and
+Grafana is bound to `127.0.0.1:9400` on the host (container port 3000), so it is reachable from the Mac Mini itself and
 nowhere else. Dashboards are auto-loaded from
 `grafana/provisioning/dashboards/bot-dashboard.json`.
 
-- **URL:** `http://127.0.0.1:3000`
+- **URL:** `http://127.0.0.1:9400` — use the IP, not `localhost`, which may resolve to IPv6 and hit a different app
 - **Username:** `admin`
 - **Password:** whatever `GF_SECURITY_ADMIN_PASSWORD` was set to in `.env`.
   Self-registration is disabled (`GF_USERS_ALLOW_SIGN_UP=false`).
@@ -27,10 +27,10 @@ Don't change the port binding to `0.0.0.0` — that publishes a Grafana admin lo
 your whole network. Tunnel over SSH instead:
 
 ```bash
-ssh -L 3000:127.0.0.1:3000 <user>@<mac-mini>
+ssh -L 9400:127.0.0.1:9400 <user>@<mac-mini>
 ```
 
-Then open `http://localhost:3000` on the local machine.
+Then open `http://127.0.0.1:9400` on the local machine.
 
 ### Changing the admin password
 `GF_SECURITY_ADMIN_PASSWORD` is only read when Grafana initializes its database — the

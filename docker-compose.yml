@@ -42,8 +42,12 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     restart: unless-stopped
+    # Host port 9400, deliberately outside the 3000-3010 range that local Node
+    # dev servers occupy. When one already holds the port, the forward loses
+    # the bind silently: Grafana runs fine inside the network while the host
+    # port serves someone else's app.
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:9400:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
