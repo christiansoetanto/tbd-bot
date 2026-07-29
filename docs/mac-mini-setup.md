@@ -100,13 +100,29 @@ Running a self-hosted runner on your personal hardware gives GitHub Actions root
 3. Select **Require approval for all outside collaborators** (or disable it entirely).
 4. Click Save.
 
-## 5. Prevent macOS Sleep (Optional but Recommended)
-The M4 Mac Mini is aggressive about power saving. If the Mac goes to sleep, Docker suspends, and the bot disconnects from Discord.
+## 5. Prevent macOS Sleep
+If the Mac sleeps, Docker suspends and the bot drops off Discord. Check the current
+state before changing anything:
 
-To prevent the Mac Mini from ever sleeping when plugged into the wall, run:
 ```bash
-sudo pmset -c sleep 0 displaysleep 0 disksleep 0
+pmset -g custom
 ```
+
+Under `AC Power`, the only value that matters is **`sleep 0`**. If it is already 0,
+there is nothing to do — on this machine it was set before the migration started.
+
+To set it:
+```bash
+sudo pmset -c sleep 0
+```
+
+Leave `displaysleep` and `disksleep` alone. The Mac Mini is headless and all-SSD, so
+neither affects the bot, and forcing `displaysleep 0` just burns power. An earlier
+version of this guide set all three.
+
+Also worth knowing: `autorestart 1` (already on) makes the Mac boot itself after a
+power failure. It still stops at the FileVault unlock screen, so it does not remove
+the need to log in — see section 6.
 
 ## 6. Install Docker
 The runner executes `docker compose` directly on this machine, so Docker must be
