@@ -41,23 +41,25 @@ user that owns the two user-scoped pieces of the Docker setup:
 So install the runner as the **same user that installed Colima**, and the ownership
 side takes care of itself.
 
-**Confirm the runner can see Docker anyway.** LaunchAgents get a minimal `PATH` — not
-the one from your interactive shell — and Homebrew's CLI lives in `/opt/homebrew/bin`,
-which is usually absent from it. A dry run from Terminal proves nothing about this.
-Verify from the runner's own environment with a throwaway `workflow_dispatch` job:
+**Confirm the runner can see Docker anyway.** LaunchAgents do not inherit your
+interactive shell's `PATH`, and Homebrew's CLI lives in `/opt/homebrew/bin`. What saves
+this is that `svc.sh install` snapshots the installing shell's `PATH` into
+`actions-runner/.path`, and `runsvc.sh` exports it — so installing the runner from a
+normal Terminal session is what makes Docker reachable. Install it from a stripped
+environment and it will not be.
 
-```yaml
-- run: |
-    whoami
-    docker version
-    docker compose version
+Check it without a round trip to GitHub, by running Docker in an environment built from
+exactly what the runner hands a job:
+
+```bash
+env -i HOME="$HOME" PATH="$(cat ~/actions-runner/.path)" bash -c \
+  'whoami; command -v docker; docker version --format "{{.Server.Version}}"; docker compose version'
 ```
 
-`whoami` must print the user that owns Colima. If `docker` is not found, add
-`PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin` to `actions-runner/.env` and
-restart with `sudo ./svc.sh stop && sudo ./svc.sh start`. If `docker` is found but
-`docker compose` is not, the daemon is not reading the right `~/.docker/config.json` —
-check `whoami` before touching `PATH` again.
+All four must succeed, and `whoami` must print the user that owns Colima. If `docker`
+is not found, `.path` is stale — re-run `./svc.sh stop && ./svc.sh uninstall && ./svc.sh install && ./svc.sh start`
+from a normal Terminal (no `sudo`), which recaptures it. If `docker` is found but
+`docker compose` is not, the problem is `~/.docker/config.json`, not `PATH`.
 
 ## 3. Create the Secrets File
 To protect your Discord token from malicious pull requests, the `.env` file is intentionally excluded from the Git repository and the GitHub Actions workspace. The CI pipeline is hardcoded to copy the `.env` file from a secure, external directory on your Mac Mini (`~/tbd-bot-secrets/.env`).
