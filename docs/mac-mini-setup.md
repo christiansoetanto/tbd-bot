@@ -98,13 +98,30 @@ or power loss.
    The `docker-compose` formula supplies the Compose V2 CLI plugin that backs
    `docker compose`; it is not the old V1 standalone binary.
 
-2. Start Colima and register it to start at boot:
+2. **Point the Docker CLI at the Homebrew plugin directory.** Homebrew installs the
+   Compose plugin somewhere the CLI does not search by default, so `docker compose`
+   fails with `docker: unknown command: docker compose` until this file exists:
+   ```bash
+   mkdir -p ~/.docker && cat > ~/.docker/config.json <<'JSON'
+   {
+     "cliPluginsExtraDirs": [
+       "/opt/homebrew/lib/docker/cli-plugins"
+     ]
+   }
+   JSON
+   docker compose version   # must now print a version
+   ```
+   This file lives in the invoking user's home directory. **The runner must run as the
+   same user**, or it will not see this config and `deploy.yml` will fail at the deploy
+   step even though the command works in your terminal.
+
+3. Start Colima and register it to start at boot:
    ```bash
    colima start --cpu 2 --memory 4 --disk 60
    brew services start colima
    ```
 
-3. Confirm both the daemon and the compose plugin:
+4. Confirm both the daemon and the compose plugin:
    ```bash
    docker version          # must show a Server section, not just Client
    docker compose version  # must succeed — deploy.yml uses this exact form
@@ -113,7 +130,7 @@ or power loss.
    `TestDeployWorkflow` in `main_test.go` together — the test asserts the literal
    command string.
 
-4. Verify Colima survives a reboot before going further. Reboot the Mac Mini, do not
+5. Verify Colima survives a reboot before going further. Reboot the Mac Mini, do not
    log in, then SSH in and run `docker version`. If the server responds, the stack
    will recover from power loss unattended.
 
