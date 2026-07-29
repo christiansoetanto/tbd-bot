@@ -31,8 +31,9 @@ Migrate the `tbd-bot` deployment architecture from the Azure Web App `tbdbot-cic
 | 3.1  | 3    | completed | Verified `deploy.yml` with `actionlint` and `TestDeployWorkflow` in `main_test.go` |
 | 4.1  | 4    | completed | `TestDockerfileGoVersionSatisfiesGoMod` failed on `golang:1.22` vs `go 1.25.0`, passes after the bump; `scripts/verify_dockerfile.sh` now compares the two versions instead of matching a literal tag |
 | 4.2  | 4    | completed | `docs/mac-mini-setup.md` section 3 now enumerates all 7 variables read by the code plus `GF_SECURITY_ADMIN_PASSWORD`, matching `.env.example` |
-| 4.3  | 4    | not started | Colima not installed on the Mac Mini yet |
-| 4.4  | 4    | not started | Blocked on 4.3; runs inside 4.6 because it uses production credentials |
+| 4.3  | 4    | completed | Colima running on the Mac Mini (`docker version` reports Server 29.5.2); `docker compose version` reports 5.3.1 after adding `cliPluginsExtraDirs` to `~/.docker/config.json`; `brew services list` shows colima started |
+| 4.3a | 4    | completed | First real `docker build` ever run: image `tbd-bot:test` at 54.9MB, `docker inspect` confirms the healthcheck, `User=nobody:nobody`, `TZ=UTC`. `docker run` with no env reaches `main()` and exits at the expected `DEVMODE` parse, proving the static arm64 binary executes as non-root. `scripts/verify_dockerfile.sh` passed its Docker branch end to end |
+| 4.4  | 4    | not started | Blocked on 4.6 step 1 — needs production secrets, so it cannot run while Azure is up |
 | 4.5  | 4    | not started | Blocked on 4.3; runner registration needs a token from the GitHub UI |
 | 4.6  | 4    | not started | Blocked on 4.3 and 4.5 |
 

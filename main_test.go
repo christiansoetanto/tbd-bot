@@ -150,6 +150,17 @@ func TestDockerfile_MultiStageAndHealthcheck(t *testing.T) {
 		t.Errorf("expected Dockerfile to contain HEALTHCHECK directive")
 	}
 
+	// /metrics is served only after dbot.Init completes its Discord round trip,
+	// so too short a start period reports unhealthy during a healthy boot.
+	startPeriod := regexp.MustCompile(`--start-period=(\d+)s`).FindStringSubmatch(dockerfile)
+	if startPeriod == nil {
+		t.Errorf("expected HEALTHCHECK to set --start-period")
+	} else if secs, err := strconv.Atoi(startPeriod[1]); err != nil {
+		t.Errorf("malformed --start-period value %q", startPeriod[1])
+	} else if secs < 30 {
+		t.Errorf("HEALTHCHECK --start-period=%ds is too short to cover Discord command registration", secs)
+	}
+
 	if !strings.Contains(dockerfile, "wget") {
 		t.Errorf("expected HEALTHCHECK to use wget")
 	}

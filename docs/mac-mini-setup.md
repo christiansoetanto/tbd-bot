@@ -86,10 +86,28 @@ sudo pmset -c sleep 0 displaysleep 0 disksleep 0
 The runner executes `docker compose` directly on this machine, so Docker must be
 installed and running before the first deployment.
 
-**Colima, not Docker Desktop.** Docker Desktop only runs while a user is logged in, so
-a reboot that stops at the login screen leaves the daemon down while the runner is up.
-Colima runs headless as a background service and comes back on its own after a reboot
-or power loss.
+**Colima, not Docker Desktop.** Colima is headless — no GUI app, no menu-bar process,
+lower idle overhead — which is what a server wants.
+
+**It does not, however, survive an unattended reboot on this machine.** `brew services
+start colima` installs a *LaunchAgent* at `~/Library/LaunchAgents/homebrew.mxcl.colima.plist`,
+and LaunchAgents only run inside a user login session. FileVault is enabled on this Mac
+Mini, so the disk needs a password at boot and automatic login is not possible. After a
+reboot or power loss:
+
+- The GitHub runner **is** up — `sudo ./svc.sh install` creates a LaunchDaemon, which
+  runs at boot with no login.
+- Colima and the containers are **down** until someone logs in.
+- Deployments in that window fail with `cannot connect to the Docker daemon`.
+
+The options are to leave it as is and log in after a reboot, or to disable FileVault and
+enable automatic login, which trades disk encryption for unattended recovery. This
+machine holds `BOTTOKEN` and the Firebase service account JSON, so **keeping FileVault
+on is the better trade** — power loss is rare, and the recovery is one login.
+
+Once someone logs in, recovery is automatic the rest of the way: Colima starts via the
+LaunchAgent and the containers come back on their own, because every service in
+`docker-compose.yml` is `restart: unless-stopped`.
 
 1. Install Colima and the Docker CLI:
    ```bash
@@ -130,9 +148,10 @@ or power loss.
    `TestDeployWorkflow` in `main_test.go` together — the test asserts the literal
    command string.
 
-5. Verify Colima survives a reboot before going further. Reboot the Mac Mini, do not
-   log in, then SSH in and run `docker version`. If the server responds, the stack
-   will recover from power loss unattended.
+5. Know the reboot behaviour before going further. Reboot the Mac Mini and, without
+   logging in, try `docker version` over SSH — it will fail, for the reasons above.
+   Log in, wait a moment, and run it again; the server should respond and the
+   containers should be back. That second result is the recovery path to rely on.
 
 ## 7. Cut Over From Azure
 Production currently runs on the Azure Web App `tbdbot-cicd`, deployed by

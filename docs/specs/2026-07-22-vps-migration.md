@@ -36,7 +36,8 @@ The current production host is the Azure Web App `tbdbot-cicd`, deployed by `.gi
 | 10 | CI Validation | Enforce `actionlint` for YAML testing, implement a native Docker `HEALTHCHECK`, and poll `docker inspect` post-deploy. |
 | 11 | Cutover | Manual, old-off-then-new-on. Stop the Azure Web App, confirm the bot is offline in Discord, then dry-run and merge. Azure stays stopped (not deleted) for a few days so rollback is one click. |
 | 12 | First execution | The stack is run by hand on the Mac Mini before merging. `deploy.yml` fires only on push to `master`, so without a dry run its first execution would also be the first real test of the image build, compose command, and secrets. |
-| 13 | Container runtime | **Colima**, not Docker Desktop. Colima runs headless as a background service and recovers from an unattended reboot or power loss; Docker Desktop needs a logged-in GUI session. |
+| 13 | Container runtime | **Colima**, not Docker Desktop — headless, no GUI app, lower idle overhead. Note that it does *not* buy unattended reboot recovery on this machine: `brew services` installs a user LaunchAgent, and FileVault rules out automatic login. |
+| 15 | Reboot recovery | Accept manual login after a reboot rather than disabling FileVault. The machine stores `BOTTOKEN` and the Firebase service account JSON; disk encryption outweighs unattended recovery from a rare event. Containers restart on their own once someone logs in, via `restart: unless-stopped`. |
 | 14 | Dry-run credentials | Production. There is no staging bot token, so the dry run is itself the live cutover — Azure is stopped first, and the bot is offline for the duration of the build. |
 
 ## Acceptance criteria
@@ -54,7 +55,7 @@ The current production host is the Azure Web App `tbdbot-cicd`, deployed by `.gi
 - The Docker-related tests are text assertions over file contents, not executions. They are not evidence that the image builds or that the stack runs; only the manual dry run on the Mac Mini is.
 - `deploy.yml` invokes Compose V2 (`docker compose`), not the standalone `docker-compose` binary, which Docker Desktop no longer ships. The dry run must use the identical command, or it would step around the most likely failure.
 - The dry run cannot prove the runner works. The `launchd` service has a minimal `PATH` and will not necessarily find the Docker CLI, so that is verified separately from the runner's own environment.
-- Runtime is Colima rather than Docker Desktop, chosen for unattended reboot recovery.
+- Runtime is Colima rather than Docker Desktop. The original reason given — that Colima recovers from an unattended reboot — turned out to be wrong on this machine: `brew services start colima` installs a user LaunchAgent, which needs a login session, and FileVault is on so automatic login is unavailable. Colima is still the right pick for being headless and cheap at idle, but the reboot story is the same as Docker Desktop's, and the runner's LaunchDaemon comes back *before* Docker does. Verified on the Mac Mini: `~/Library/LaunchAgents/homebrew.mxcl.colima.plist`, `fdesetup status` reports `FileVault is On`, and no `autoLoginUser` is set.
 - The dry run uses production credentials because no staging bot exists. This collapses "dry run" and "cutover" into one sequence: Azure stops first, the bot is offline while the image builds, and the dry run doubles as the go-live. The acceptance check therefore includes reading real Firestore data, since a wrong `TBDENV` would otherwise look like a healthy but empty bot.
 
 **Roles touched:** none
