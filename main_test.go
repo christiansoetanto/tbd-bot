@@ -321,11 +321,54 @@ func TestGrafanaDashboardJSON(t *testing.T) {
 		"tbd_bot_cm_actions_total",
 		"tbd_bot_messages_processed_total",
 		"tbd_bot_component_interactions_total",
+		// Runtime panels. These are always populated, so the dashboard shows
+		// something real even before any bot event has occurred.
+		"go_goroutines",
+		"process_resident_memory_bytes",
+		"process_start_time_seconds",
 	}
 
 	for _, metric := range requiredMetrics {
 		if !strings.Contains(raw, metric) {
 			t.Errorf("bot-dashboard.json missing Prometheus metric query for: %q", metric)
+		}
+	}
+
+	// Labelled counters have no series at all until their first increment, so a
+	// panel querying one renders "No data" — indistinguishable from a broken
+	// dashboard. Each must fall back to an explicit zero.
+	needsZeroFallback := []string{
+		"tbd_bot_cron_executions_total",
+		"tbd_bot_cm_actions_total",
+		"tbd_bot_messages_processed_total",
+		"tbd_bot_component_interactions_total",
+	}
+
+	panels, _ := parsed["panels"].([]any)
+	for _, metric := range needsZeroFallback {
+		found := false
+		for _, p := range panels {
+			panel, ok := p.(map[string]any)
+			if !ok {
+				continue
+			}
+			targets, _ := panel["targets"].([]any)
+			for _, tg := range targets {
+				target, ok := tg.(map[string]any)
+				if !ok {
+					continue
+				}
+				expr, _ := target["expr"].(string)
+				if strings.Contains(expr, metric) {
+					found = true
+					if !strings.Contains(expr, "or vector(0)") {
+						t.Errorf("panel querying %q must fall back to `or vector(0)`, got: %s", metric, expr)
+					}
+				}
+			}
+		}
+		if !found {
+			t.Errorf("no panel queries %q", metric)
 		}
 	}
 }
