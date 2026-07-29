@@ -47,7 +47,11 @@ func ParseOfficeOfReadings(r io.Reader, date time.Time) (title string, text stri
 
 	title = officeOfReadingsTitle(date)
 	doc.Find(".rubrica").Each(func(i int, s *goquery.Selection) {
-		if strings.TrimSpace(s.Text()) != "SECOND READING" {
+		// Prefix rather than equality: on Memorials carrying a proper-reading
+		// rubric, iBreviary leaves this span open and folds the rubric text into
+		// it, so the element reads "SECOND READING<br><br>The proper reading...".
+		// Requiring an exact match skipped those days entirely.
+		if !strings.HasPrefix(strings.TrimSpace(s.Text()), "SECOND READING") {
 			return
 		}
 		parent := s.Parent()
