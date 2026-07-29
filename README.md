@@ -13,10 +13,36 @@ Because I couldn't think of a name at time of writing the code.
 - Q&A
   - #religious-questions, #religious-discussions, #religious-discussions-2, and #answered-questions system where, as the name implies, answered questions will be moved to #answered-questions so that unanswered questions can have more exposure.
 ## Monitoring & Grafana Access
-Grafana is exposed locally on port `3000` (bound to `127.0.0.1:3000` for security):
-- Local URL: `http://127.0.0.1:3000` (accessible only from the Mac Mini itself; Grafana is bound to localhost for security)
-- Credentials: Default `admin` / `admin` (change upon first login or set via `.env`)
-- Pre-configured Grafana dashboard auto-loaded from `grafana/provisioning/dashboards/bot-dashboard.json`.
+Grafana is bound to `127.0.0.1:3000`, so it is reachable from the Mac Mini itself and
+nowhere else. Dashboards are auto-loaded from
+`grafana/provisioning/dashboards/bot-dashboard.json`.
+
+- **URL:** `http://127.0.0.1:3000`
+- **Username:** `admin`
+- **Password:** whatever `GF_SECURITY_ADMIN_PASSWORD` was set to in `.env`.
+  Self-registration is disabled (`GF_USERS_ALLOW_SIGN_UP=false`).
+
+### Viewing it from another machine
+Don't change the port binding to `0.0.0.0` — that publishes a Grafana admin login to
+your whole network. Tunnel over SSH instead:
+
+```bash
+ssh -L 3000:127.0.0.1:3000 <user>@<mac-mini>
+```
+
+Then open `http://localhost:3000` on the local machine.
+
+### Changing the admin password
+`GF_SECURITY_ADMIN_PASSWORD` is only read when Grafana initializes its database — the
+first boot with an empty `grafana_data` volume. After that, editing the variable and
+restarting has no effect, because Grafana reads the password from its own database.
+To change it later:
+
+```bash
+docker exec -it grafana grafana-cli admin reset-admin-password 'new-password'
+```
+
+Update `.env` to match afterwards, or the file will disagree with reality.
 
 ## Self-Hosted Runner Security
 To protect the local host environment and self-hosted runner from arbitrary code execution via external Fork Pull Requests:
