@@ -38,7 +38,46 @@ The current production host is the Azure Web App `tbdbot-cicd`, deployed by `.gi
 | 12 | First execution | The stack is run by hand on the Mac Mini before merging. `deploy.yml` fires only on push to `master`, so without a dry run its first execution would also be the first real test of the image build, compose command, and secrets. |
 | 13 | Container runtime | **Colima**, not Docker Desktop — headless, no GUI app, lower idle overhead. Note that it does *not* buy unattended reboot recovery on this machine: `brew services` installs a user LaunchAgent, and FileVault rules out automatic login. |
 | 15 | Reboot recovery | Accept manual login after a reboot rather than disabling FileVault. The machine stores `BOTTOKEN` and the Firebase service account JSON; disk encryption outweighs unattended recovery from a rare event. Containers restart on their own once someone logs in, via `restart: unless-stopped`. |
+| 16 | Secrets storage | A plain `.env` at `~/tbd-bot-secrets/.env` on the runner host, copied into the workspace at deploy time — **not** GitHub Actions Secrets. See the note below for why, and for the conditions that should end this choice. |
 | 14 | Dry-run credentials | Production. There is no staging bot token, so the dry run is itself the live cutover — Azure is stopped first, and the bot is offline for the duration of the build. |
+
+### Note on decision 16: secrets on disk
+
+This works only because three things are true: one person owns the repository, that
+same person owns the runner hardware, and there is exactly one deployment target.
+
+The real argument for it is that the secrets never enter GitHub at all. A compromised
+GitHub account does not expose `BOTTOKEN` or the Firebase service account JSON, because
+they only ever existed on hardware in the owner's house. That is a genuine property,
+and it is worth the operational cost at this scale.
+
+The file sits outside the repository because `actions/checkout` defaults to
+`clean: true`, which runs `git clean -ffdx` — the `-x` deletes ignored files, so a
+`.env` inside the workspace would be wiped before every deploy. `.env` is *also*
+gitignored, which is a separate protection: the deploy step and the manual dry run both
+copy the real file into the repository root, and that copy must never be committable.
+
+An earlier version of this rationale claimed the layout prevents exfiltration by
+malicious pull requests. It does not — a workflow step that can read the workspace can
+read `$HOME` just as easily. What actually prevents that is `deploy.yml` triggering only
+on push to `master`, so a pull request cannot fire it, plus the fork-PR approval setting.
+
+**Stop using this the moment either becomes true:**
+
+- A second person can merge to `master`.
+- A second machine deploys.
+
+At that point the local file stops being a security decision and becomes an unmanaged
+one — no distribution, no rotation, no audit trail, and no way to scope production
+secrets to production jobs. The replacement, in increasing order of strength:
+
+1. **GitHub Actions Secrets**, injected per job. Add a `production` Environment for
+   required reviewers and branch restrictions.
+2. **OIDC federation** to GCP Secret Manager via Workload Identity Federation. The
+   runner exchanges a short-lived GitHub OIDC token for credentials that expire in
+   minutes, and no long-lived secret is stored anywhere. This project already runs on
+   Firestore, so the Firebase service account JSON — the longest-lived and most
+   damaging credential here — is exactly what that eliminates.
 
 ## Acceptance criteria
 - **Wave 1 (Metrics & Lifecycle):** The Go codebase is updated to expose `/metrics` on port 8080. A graceful `SIGTERM` trap closes the Discord session. RED metrics are manually injected into event handlers.

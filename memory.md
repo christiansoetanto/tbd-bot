@@ -43,7 +43,7 @@
 - **Status**: Code complete on `feature/mac-mini-migration`; not merged, not deployed. Production still runs on the Azure Web App `tbdbot-cicd`. Cutover order is documented in `docs/mac-mini-setup.md` sections 6-9.
 - **Deployment**: Automated via GitHub Actions (`.github/workflows/deploy.yml`) targeting a local `self-hosted` runner on an M4 Mac Mini.
 - **Infrastructure**: Containerized via a multi-stage `Dockerfile` (alpine `golang` builder tracking the `go` directive in `go.mod`, with `CGO_ENABLED=0` and `wget` healthcheck) and orchestrated via `docker-compose.yml`.
-- **Secrets Management**: The `.env` file is excluded from Git and injected directly from `~/tbd-bot-secrets/.env` on the Mac Mini runner to prevent unauthorized PR exfiltration.
+- **Secrets Management**: The `.env` lives at `~/tbd-bot-secrets/.env` on the Mac Mini and is copied into the workspace at deploy time. It sits outside the repository because `actions/checkout` runs `git clean -ffdx`, which would delete it; it is *also* gitignored so the copied-in file can never be committed. The point is that secrets never enter GitHub at all — not PR exfiltration protection, which this does not provide. Valid only while one person owns the repo and one machine deploys; see decision 16 in `docs/specs/2026-07-22-vps-migration.md`.
 - **Data Safety**: Uses Docker named volumes (`prometheus_data`, `grafana_data`) to survive reboots without macOS permission loops. Prometheus is strictly limited to 14 days or 1GB retention.
 - **Monitoring (Prometheus/Grafana)**:
   - Custom HTTP `/metrics` server running on port 8080.
