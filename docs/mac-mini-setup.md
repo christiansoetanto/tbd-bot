@@ -27,13 +27,30 @@ sudo ./svc.sh start
 ```
 The runner is now permanently listening in the background.
 
-**Confirm the runner can see Docker.** The service runs under `launchd` with a minimal
-`PATH`, not the `PATH` from your interactive shell, and Docker Desktop installs the CLI
-into `/usr/local/bin` or `~/.docker/bin`. A dry run from Terminal proves nothing about
-this. Verify it from the runner's own environment — the simplest check is a throwaway
-`workflow_dispatch` job that runs `docker compose version`. If it cannot find `docker`,
-add the directory to `PATH` in the runner's `.env` file (`actions-runner/.env`) and
-restart the service with `sudo ./svc.sh stop && sudo ./svc.sh start`.
+**Install the service as the same user that installed Colima** (`chris`). `svc.sh`
+installs the runner as a LaunchDaemon; two pieces of the Docker setup are user-scoped
+and break if the daemon runs as anyone else:
+
+- `~/.docker/config.json`, which is what makes `docker compose` resolve at all.
+- The Colima VM and its socket, under `~/.colima/`.
+
+**Confirm the runner can see Docker.** The daemon gets a minimal `PATH` — not the one
+from your interactive shell — and Homebrew's CLI lives in `/opt/homebrew/bin`. A dry
+run from Terminal proves nothing about this. Verify from the runner's own environment
+with a throwaway `workflow_dispatch` job:
+
+```yaml
+- run: |
+    whoami
+    docker version
+    docker compose version
+```
+
+`whoami` must print the user that owns Colima. If `docker` is not found, add
+`PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin` to `actions-runner/.env` and
+restart with `sudo ./svc.sh stop && sudo ./svc.sh start`. If `docker` is found but
+`docker compose` is not, the daemon is not reading the right `~/.docker/config.json` —
+check `whoami` before touching `PATH` again.
 
 ## 3. Create the Secrets File
 To protect your Discord token from malicious pull requests, the `.env` file is intentionally excluded from the Git repository and the GitHub Actions workspace. The CI pipeline is hardcoded to copy the `.env` file from a secure, external directory on your Mac Mini (`~/tbd-bot-secrets/.env`).
@@ -108,6 +125,10 @@ on is the better trade** — power loss is rare, and the recovery is one login.
 Once someone logs in, recovery is automatic the rest of the way: Colima starts via the
 LaunchAgent and the containers come back on their own, because every service in
 `docker-compose.yml` is `restart: unless-stopped`.
+
+**After any reboot, the order is: log in, confirm `docker version` answers, then re-run
+any deploy that failed while the machine was down.** A deploy that fires before login
+hits a dead daemon, and the failure reads like a code problem when it is not.
 
 1. Install Colima and the Docker CLI:
    ```bash
@@ -202,6 +223,18 @@ Confirm the bot is back online in Discord and answers one slash command. Since t
 production, also confirm it is reading real data — a command that reads Firestore
 proves `TBDENV` and `FIREBASE_CONFIG` are correct. Empty results mean `TBDENV` is
 wrong and the bot is pointed at empty collections.
+
+**Measure how long `/metrics` takes to answer.** This is the first time `dbot.Init`
+runs in a container, and the HTTP server starts only after it finishes registering
+slash commands with Discord. The healthcheck allows 60s (`--start-period`) and
+`deploy.yml` gives up at 120s; both numbers were chosen without a measurement:
+
+```bash
+time until curl -sf localhost:8080/metrics >/dev/null; do sleep 1; done
+```
+
+A few seconds means the current bounds are fine. Anything approaching 60s means raise
+both `--start-period` and the workflow timeout before relying on this pipeline.
 
 If anything fails, tear down with `docker compose down`, restart the Azure app to
 restore service, and fix the problem before retrying.
