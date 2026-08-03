@@ -22,6 +22,16 @@ jobs:
       - name: Deploy container stack
         run: docker compose up -d --build
 
+      # `docker compose up -d` only recreates containers whose image or config
+      # changed. Editing grafana/provisioning/ changes neither: the directory is
+      # bind-mounted, so the new files land on disk while Grafana keeps running
+      # with whatever it read at startup. That is how the two heartbeat alert
+      # rules deployed on 2026-08-03 and were then simply absent. Grafana reads
+      # provisioning only at boot, so it needs the restart — and only Grafana
+      # does, which keeps a dashboard edit from costing the bot any downtime.
+      - name: Reload Grafana provisioning
+        run: docker compose restart grafana
+
       - name: Post-deployment health check
         run: |
           echo "Waiting for container to become healthy..."
