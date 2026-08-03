@@ -252,3 +252,26 @@ func TestGatewayEverConnected(t *testing.T) {
 		t.Error("expected true once an ack has been seen, even a stale one")
 	}
 }
+
+// The ping inherits whatever context Init was handed. That is context.Background()
+// today, but a startup deadline added there later would expire and every
+// subsequent ping would fail with "context deadline exceeded" — the switch
+// would go silent and alert about a bot that is fine. The heartbeat owns its
+// own deadline instead.
+func TestHeartbeatIgnoresParentContextLifetime(t *testing.T) {
+	t.Cleanup(func() { util.SetGatewayStater(nil) })
+
+	rec := &recorder{}
+	server := httptest.NewServer(rec)
+	t.Cleanup(server.Close)
+
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
+	defer cancel()
+
+	util.SetGatewayStater(fakeStater{ack: time.Now()})
+	util.NewHeartbeat(server.URL).Ping(expired)
+
+	if paths, _ := rec.calls(); len(paths) != 1 {
+		t.Fatalf("expected the ping to land despite an expired parent context, got %v", paths)
+	}
+}

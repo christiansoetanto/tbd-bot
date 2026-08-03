@@ -84,6 +84,15 @@ func (h *Heartbeat) Ping(ctx context.Context) {
 		url, body, result = h.failURL, reason, "fail"
 	}
 
+	// The heartbeat owns its deadline rather than inheriting the caller's.
+	// The context reaching here is whatever main handed dbot.Init — today
+	// context.Background(), but a startup timeout added there later would
+	// expire and every ping after it would fail with "context deadline
+	// exceeded". The switch would then go silent and alert about a bot that
+	// is fine, which is worse than not having it.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), heartbeatTimeout)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
 		ExternalHeartbeatTotal.WithLabelValues("error").Inc()
