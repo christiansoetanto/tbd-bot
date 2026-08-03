@@ -126,6 +126,14 @@ in Discord. `/metrics` itself stays unconditional so Prometheus keeps scraping t
 outage; a metrics endpoint that fails during an incident destroys the series needed to alert
 on it.
 
+### Changing a provisioned rule or dashboard
+`deploy.yml` restarts Grafana after composing the stack. Without that step the change
+deploys and is never read: `docker compose up -d` only recreates containers whose image or
+config changed, and editing `grafana/provisioning/` changes neither — the directory is
+bind-mounted, so the new files land on disk while Grafana keeps running with whatever it read
+at boot. That is how the two heartbeat rules deployed on 2026-08-03 and were then absent from
+Grafana entirely. Only Grafana is restarted, so a dashboard edit costs no bot downtime.
+
 ### Removing a provisioned alert rule
 Deleting the file does **not** delete the rule. Grafana copies provisioned rules into its own
 database and keeps them after the file is gone — the same trap as `GF_SECURITY_ADMIN_PASSWORD`

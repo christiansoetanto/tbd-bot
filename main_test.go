@@ -715,3 +715,37 @@ func TestDashboardCoversExternalHeartbeat(t *testing.T) {
 		}
 	}
 }
+
+// `docker compose up -d --build` only recreates containers whose image or
+// config changed. A change under grafana/provisioning/ changes neither, so
+// Grafana keeps running with the rules it read at startup — which is how the
+// two heartbeat rules deployed on 08-03 and were simply absent afterwards.
+// TestDeployWorkflow cannot catch this: the compose command is correct.
+func TestDeployWorkflowReloadsGrafanaProvisioning(t *testing.T) {
+	content, err := os.ReadFile(".github/workflows/deploy.yml")
+	if err != nil {
+		t.Fatalf("failed to read deploy.yml: %v", err)
+	}
+	workflow := string(content)
+
+	if !strings.Contains(workflow, "docker compose restart grafana") {
+		t.Error("deploy.yml never reloads Grafana, so alerting and dashboard changes deploy to disk and are never read")
+	}
+
+	// Order matters: reloading before the new files are in place would read
+	// the old ones and look like it worked.
+	up := strings.Index(workflow, "docker compose up -d --build")
+	reload := strings.Index(workflow, "docker compose restart grafana")
+	if up < 0 || reload < 0 {
+		t.Fatal("deploy.yml is missing the compose up or the Grafana reload")
+	}
+	if reload < up {
+		t.Error("deploy.yml reloads Grafana before composing the stack; it must come after")
+	}
+
+	// Restarting the whole stack instead would take the bot down on every
+	// deploy to pick up a Grafana-only change.
+	if strings.Contains(workflow, "docker compose restart\n") || strings.Contains(workflow, "docker compose restart tbd-bot") {
+		t.Error("deploy.yml restarts more than Grafana; a provisioning change must not cost bot downtime")
+	}
+}
