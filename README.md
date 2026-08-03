@@ -100,23 +100,23 @@ to reach Ready, so a tick landing there would `/fail` on **every deploy** until 
 stopped being read. It clears itself with no timer to tune: the gateway has either acknowledged
 a heartbeat or it has not.
 
-Set `HEALTHCHECKS_PING_URL` and `HEALTHCHECKS_DISK_PING_URL` in `~/tbd-bot-secrets/.env` with
-period 1m and grace 5m. These are credentials in the opposite direction from the webhook —
-anyone holding one can ping success and **suppress** the alert.
+Set `HEALTHCHECKS_PING_URL` in `~/tbd-bot-secrets/.env` with period 1m and grace 5m. It is a
+credential in the opposite direction from the webhook — anyone holding it can ping success and
+**suppress** the alert.
 
-### The host disk
-`scripts/host-disk-check.sh` runs as a user LaunchAgent every 15 minutes and fails its check
-below 10GB free. It runs on the host rather than in the bot because the container sees the
-Colima VM's disk, not the host's, and the host volume is the one that filled on 2026-07-29 —
-taking Colima's LaunchAgent down with it, with `KeepAlive.SuccessfulExit=true` meaning launchd
-never retried. Docker survived only because a manually started VM was already up. Install it
-with the instructions at the top of `scripts/com.chris.tbd-bot-disk-check.plist`.
-
-### After a reboot
+### After a reboot, and the disk
 Colima and the GitHub runner are both user LaunchAgents, and FileVault is on, so a reboot needs
 someone at the keyboard before anything starts. That was decided on 2026-07-29 and stands: the
 machine holds `BOTTOKEN` and the Firebase service account. This path is **untested** — it
 cannot be tested without a reboot. The dead-man's switch is what tells you it happened.
+
+The same switch covers the disk, indirectly and after the fact rather than as a warning.
+`KeepAlive.SuccessfulExit=true` in Colima's LaunchAgent restarts it only after a *clean* exit,
+so when the host volume filled on 2026-07-29 the agent exited 1 writing its config and launchd
+never retried. Docker survived only because a manually started VM was already up. Nothing
+watches free space — if it fills again the bot goes down, and the heartbeat stopping is how you
+find out. Check it by hand with `df -h /System/Volumes/Data`; `docker system df` shows what is
+reclaimable.
 
 ### Health is the gateway, not the HTTP server
 `/health` returns 503 once the Discord gateway stops acknowledging heartbeats, and the Docker

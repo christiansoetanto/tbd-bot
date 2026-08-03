@@ -80,19 +80,7 @@ Both use `noDataState: OK`, deliberately unlike the gateway and target rules.
 `Alerting` no-data state here would turn one outage into three Discord messages. These
 rules exist only for "the bot is up but its pinger is not working".
 
-### Host disk check
-
-`scripts/host-disk-check.sh`, run by a user LaunchAgent, pings a second check and
-fails it when free space on the data volume drops below the threshold.
-
-It runs on the host rather than in the bot, because the container sees the Colima VM's
-disk (59G, 10% used) and not the host's (228G, 89% used). The bot cannot observe the
-volume that actually filled.
-
-The script sources `~/tbd-bot-secrets/.env` for `HEALTHCHECKS_DISK_PING_URL` rather
-than carrying a URL in a plist, which would put a credential in git.
-
-### Colima: documented, not repaired
+### Colima and the disk: documented, not repaired
 
 The 07-29 disk exhaustion killed the Colima LaunchAgent:
 
@@ -125,12 +113,15 @@ Two things follow, and neither is a code change:
 So the reboot path stays manual and stays documented in `docs/mac-mini-setup.md`. It is
 recorded as untested, because it cannot be tested without a reboot.
 
+Free space is not monitored either — see the clarification below. The heartbeat reports
+a full disk after it has already taken the bot down, rather than warning before it does.
+
 ## Security
 
-`HEALTHCHECKS_PING_URL` and `HEALTHCHECKS_DISK_PING_URL` are credentials. Anyone
-holding one can ping success and suppress the alert. They live in
+`HEALTHCHECKS_PING_URL` is a credential. Anyone holding it can ping success and
+suppress the alert. It lives in
 `~/tbd-bot-secrets/.env`, reaching a deploy only through the `cp` in `deploy.yml`, and
-never appear in a tracked file. `docker-compose.yml` needs no change: the bot already
+never appears in a tracked file. `docker-compose.yml` needs no change: the bot already
 mounts the whole file via `env_file`.
 
 ## Testing
@@ -144,12 +135,29 @@ Written before the code, per the repo's standing practice.
 - transport failure increments `result="error"` and does not panic
 - URL construction does not double a trailing slash
 - metrics registered exactly once
-- `.env.example` documents both variables
-- alerting provisioning contains the heartbeat rule with `noDataState: OK`
+- a ping lands even when the caller's context has already expired
+- `.env.example` documents the variable
+- alerting provisioning contains the heartbeat rules with `noDataState: OK`
 - no literal `hc-ping.com/<uuid>` in any tracked file
 
 ## Out of scope
 
-- node_exporter and host metrics in Prometheus. Considered and rejected as a larger
-  component for this goal; the disk check covers the failure that actually occurred.
+- node_exporter and host metrics in Prometheus. Rejected as a larger component than
+  this goal needs.
+- Host disk monitoring. See the clarification below.
 - Automatic reboot recovery. Blocked by FileVault, decided 07-29.
+
+## Clarifications
+
+**2026-08-03** — Host disk monitoring is dropped at the user's request. The design
+originally paired the bot heartbeat with `scripts/host-disk-check.sh`, a user
+LaunchAgent pinging a second check below a free-space threshold. It was built, tested
+and then removed before merge.
+
+The consequence is stated rather than hidden: nothing warns before the volume fills.
+The 07-29 sequence can repeat — disk fills, Colima's LaunchAgent exits 1,
+`KeepAlive.SuccessfulExit=true` declines to retry, Docker stays down. The difference
+from 07-29 is that the outage no longer passes unnoticed for days: the heartbeat stops
+and healthchecks.io alerts within about six minutes. Detection replaces prevention.
+`df -h /System/Volumes/Data` was 22GB free at the time of writing, against the 10GB
+threshold the dropped check would have used.

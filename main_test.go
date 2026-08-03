@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -630,102 +629,6 @@ func TestDeployWorkflow(t *testing.T) {
 	}
 }
 
-// hostDiskCheck runs scripts/host-disk-check.sh against a stub ping server and
-// returns the paths it hit. The script measures the host volume, which the bot
-// cannot see from inside the Colima VM, so the measurement is injectable.
-func hostDiskCheck(t *testing.T, freeGB, minFreeGB string) []string {
-	t.Helper()
-
-	var mu sync.Mutex
-	var paths []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		paths = append(paths, r.URL.Path)
-		mu.Unlock()
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	cmd := exec.Command("bash", "scripts/host-disk-check.sh")
-	cmd.Env = append(os.Environ(),
-		"HEALTHCHECKS_DISK_PING_URL="+server.URL,
-		"TBD_DISK_FREE_GB="+freeGB,
-		"TBD_DISK_MIN_FREE_GB="+minFreeGB,
-	)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("host-disk-check.sh failed: %v\n%s", err, out)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	return append([]string(nil), paths...)
-}
-
-// The 07-29 disk exhaustion killed the Colima LaunchAgent, and
-// KeepAlive.SuccessfulExit=true meant launchd never retried it. Nothing was
-// watching the volume that filled.
-func TestHostDiskCheckFailsBelowThreshold(t *testing.T) {
-	paths := hostDiskCheck(t, "5", "10")
-	if len(paths) != 1 {
-		t.Fatalf("expected exactly one ping, got %v", paths)
-	}
-	if !strings.HasSuffix(paths[0], "/fail") {
-		t.Errorf("expected the /fail URL with 5GB free under a 10GB threshold, got %q", paths[0])
-	}
-}
-
-func TestHostDiskCheckSucceedsAboveThreshold(t *testing.T) {
-	paths := hostDiskCheck(t, "50", "10")
-	if len(paths) != 1 {
-		t.Fatalf("expected exactly one ping, got %v", paths)
-	}
-	if strings.HasSuffix(paths[0], "/fail") {
-		t.Errorf("expected the success URL with 50GB free under a 10GB threshold, got %q", paths[0])
-	}
-}
-
-// The ping URL is a credential: anyone holding it can ping success and
-// suppress the alert. It lives in ~/tbd-bot-secrets/.env and must never reach
-// a tracked file, the same rule the Discord webhook follows.
-func TestHostDiskCheckKeepsPingURLOutOfGit(t *testing.T) {
-	for _, path := range []string{"scripts/host-disk-check.sh", "scripts/com.chris.tbd-bot-disk-check.plist"} {
-		content, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("failed to read %s: %v", path, err)
-		}
-		if regexp.MustCompile(`hc-ping\.com/[0-9a-f]{8}`).Match(content) {
-			t.Errorf("%s contains a literal ping URL; it belongs in ~/tbd-bot-secrets/.env", path)
-		}
-	}
-
-	script, err := os.ReadFile("scripts/host-disk-check.sh")
-	if err != nil {
-		t.Fatalf("failed to read the disk check script: %v", err)
-	}
-	if !strings.Contains(string(script), "tbd-bot-secrets/.env") {
-		t.Error("host-disk-check.sh must read its ping URL from ~/tbd-bot-secrets/.env")
-	}
-	// Sourcing the file would execute it. It holds a Firebase service account
-	// JSON blob among other values, so the URL is grepped out instead.
-	if regexp.MustCompile(`(?m)^\s*(source|\.)\s`).Match(script) {
-		t.Error("host-disk-check.sh must not source the secrets file; grep the value out instead")
-	}
-}
-
-func TestDiskCheckLaunchAgentRunsTheScript(t *testing.T) {
-	content, err := os.ReadFile("scripts/com.chris.tbd-bot-disk-check.plist")
-	if err != nil {
-		t.Fatalf("failed to read the disk check plist: %v", err)
-	}
-	plist := string(content)
-	for _, sub := range []string{"host-disk-check.sh", "StartInterval", "RunAtLoad"} {
-		if !strings.Contains(plist, sub) {
-			t.Errorf("disk check plist missing %q", sub)
-		}
-	}
-}
-
 // The external switch is the only watcher that outlives this Mac, so the two
 // ways it can be silently absent — no URL, or a URL that stops working — both
 // need a rule of their own.
@@ -768,10 +671,8 @@ func TestExternalHeartbeatProvisioned(t *testing.T) {
 		t.Fatalf("failed to read .env.example: %v", err)
 	}
 	env := string(envExample)
-	for _, key := range []string{"HEALTHCHECKS_PING_URL", "HEALTHCHECKS_DISK_PING_URL"} {
-		if !strings.Contains(env, key) {
-			t.Errorf(".env.example does not document %s", key)
-		}
+	if !strings.Contains(env, "HEALTHCHECKS_PING_URL") {
+		t.Error(".env.example does not document HEALTHCHECKS_PING_URL")
 	}
 
 	// The bot reads the ping URL through env_file, so compose needs no change
