@@ -218,6 +218,37 @@ func TestDockerfileGoVersionSatisfiesGoMod(t *testing.T) {
 	}
 }
 
+// CI installs its own toolchain, so it drifts from go.mod independently of the
+// Dockerfile. A toolchain older than the go directive fails at module parse
+// time, before any build error the developer would recognize.
+func TestCIWorkflowGoVersionSatisfiesGoMod(t *testing.T) {
+	goMod, err := os.ReadFile("go.mod")
+	if err != nil {
+		t.Fatalf("failed to read go.mod: %v", err)
+	}
+	modMatch := regexp.MustCompile(`(?m)^go\s+(\d+\.\d+(?:\.\d+)?)`).FindStringSubmatch(string(goMod))
+	if modMatch == nil {
+		t.Fatalf("no go directive found in go.mod")
+	}
+
+	workflowPath := ".github/workflows/go.yml"
+	workflow, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", workflowPath, err)
+	}
+	verMatch := regexp.MustCompile(`go-version:\s*['"]?(\d+\.\d+(?:\.\d+)?)`).FindStringSubmatch(string(workflow))
+	if verMatch == nil {
+		t.Fatalf("no go-version found in %s", workflowPath)
+	}
+
+	modMajor, modMinor := parseMajorMinor(t, modMatch[1])
+	ciMajor, ciMinor := parseMajorMinor(t, verMatch[1])
+
+	if ciMajor < modMajor || (ciMajor == modMajor && ciMinor < modMinor) {
+		t.Errorf("%s go-version %s is older than go.mod requirement go %s", workflowPath, verMatch[1], modMatch[1])
+	}
+}
+
 func TestDockerComposeAndMonitoringSetup(t *testing.T) {
 	composeBytes, err := os.ReadFile("docker-compose.yml")
 	if err != nil {
