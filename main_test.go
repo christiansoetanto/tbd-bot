@@ -8,6 +8,7 @@ import (
 
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -625,5 +626,92 @@ func TestDeployWorkflow(t *testing.T) {
 	}
 	if strings.TrimSpace(upCmd[1]) != "" {
 		t.Errorf("deploy.yml limits the deploy to %q; it must recreate the whole stack so Grafana picks up alerting provisioning", strings.TrimSpace(upCmd[1]))
+	}
+}
+
+// The external switch is the only watcher that outlives this Mac, so the two
+// ways it can be silently absent — no URL, or a URL that stops working — both
+// need a rule of their own.
+func TestExternalHeartbeatProvisioned(t *testing.T) {
+	rules, err := os.ReadFile("grafana/provisioning/alerting/rules.yml")
+	if err != nil {
+		t.Fatalf("failed to read rules.yml: %v", err)
+	}
+	r := string(rules)
+	for _, sub := range []string{
+		"tbd_bot_external_heartbeat_enabled",
+		"tbd_bot_external_heartbeat_last_ping_timestamp_seconds",
+		"tbd-bot-heartbeat-disabled",
+		"tbd-bot-heartbeat-not-delivering",
+	} {
+		if !strings.Contains(r, sub) {
+			t.Errorf("rules.yml missing expected content: %q", sub)
+		}
+	}
+
+	// tbd-bot-target-down already owns "the bot is absent". With the policy
+	// grouping by alertname, an Alerting no-data state on these two would turn
+	// a single outage into three separate Discord messages.
+	for _, uid := range []string{"tbd-bot-heartbeat-disabled", "tbd-bot-heartbeat-not-delivering"} {
+		idx := strings.Index(r, "uid: "+uid)
+		if idx < 0 {
+			t.Fatalf("rule %s not found", uid)
+		}
+		rest := r[idx:]
+		if end := strings.Index(rest, "\n      - uid:"); end > 0 {
+			rest = rest[:end]
+		}
+		if !strings.Contains(rest, "noDataState: OK") {
+			t.Errorf("rule %s must use noDataState: OK so an outage is not reported twice", uid)
+		}
+	}
+
+	envExample, err := os.ReadFile(".env.example")
+	if err != nil {
+		t.Fatalf("failed to read .env.example: %v", err)
+	}
+	env := string(envExample)
+	if !strings.Contains(env, "HEALTHCHECKS_PING_URL") {
+		t.Error(".env.example does not document HEALTHCHECKS_PING_URL")
+	}
+
+	// The bot reads the ping URL through env_file, so compose needs no change
+	// — but only as long as env_file stays.
+	compose, err := os.ReadFile("docker-compose.yml")
+	if err != nil {
+		t.Fatalf("failed to read docker-compose.yml: %v", err)
+	}
+	if !strings.Contains(string(compose), "env_file") {
+		t.Error("docker-compose.yml no longer passes .env to the bot, so HEALTHCHECKS_PING_URL cannot reach it")
+	}
+}
+
+// A ping URL in a tracked file is a credential leak in the direction that
+// matters least visibly: it would let anyone suppress the alert.
+func TestNoPingURLInTrackedFiles(t *testing.T) {
+	out, err := exec.Command("git", "grep", "-lE", `hc-ping\.com/[0-9a-f]{8}`).CombinedOutput()
+	if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+		t.Errorf("ping URLs found in tracked files:\n%s", out)
+	}
+}
+
+func TestDashboardCoversExternalHeartbeat(t *testing.T) {
+	content, err := os.ReadFile("grafana/provisioning/dashboards/bot-dashboard.json")
+	if err != nil {
+		t.Fatalf("failed to read the dashboard: %v", err)
+	}
+	var dashboard map[string]any
+	if err := json.Unmarshal(content, &dashboard); err != nil {
+		t.Fatalf("dashboard is not valid JSON: %v", err)
+	}
+	body := string(content)
+	for _, metric := range []string{
+		"tbd_bot_external_heartbeat_enabled",
+		"tbd_bot_external_heartbeat_last_ping_timestamp_seconds",
+		"tbd_bot_external_heartbeat_total",
+	} {
+		if !strings.Contains(body, metric) {
+			t.Errorf("dashboard has no panel for %s", metric)
+		}
 	}
 }

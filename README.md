@@ -63,17 +63,60 @@ that copy, the repo `.env` must carry the value too. Grafana is the unforgiving 
 which silently resolves to an empty string when unset. Alerting then provisions cleanly and
 delivers nowhere.
 
-Three rules fire into it:
+Five rules fire into it:
 
 | Rule | Fires when | No-data behaviour |
 |------|-----------|-------------------|
 | `tbd-bot-gateway-stale` | No Discord heartbeat acknowledged for over 5 minutes | Alerting |
 | `tbd-bot-target-down` | Prometheus cannot scrape the bot | Alerting |
 | `tbd-bot-external-api-failing` | Any GitHub or Discord API call failed in the last 15 minutes | OK |
+| `tbd-bot-heartbeat-disabled` | `HEALTHCHECKS_PING_URL` is unset | OK |
+| `tbd-bot-heartbeat-not-delivering` | No external ping delivered for over 10 minutes | OK |
 
 The first two alert on missing data on purpose. Every signal that failed during the 2026-08-01
 outage failed by going quiet rather than by going red, so a rule that treats absence as health
-would reproduce exactly that.
+would reproduce exactly that. The last two deliberately do not: `tbd-bot-target-down` already
+owns "the bot is absent", and the notification policy groups by alertname, so alerting on their
+absence too would send one outage to Discord three times.
+
+## The host itself
+Everything above runs on the same Mac Mini as the bot. None of it can report that machine
+losing power, network or Colima, because the alerter dies with the thing it watches — the same
+shape as the 08-01 outage, one layer up. Nothing outside the house can poll the machine either,
+so the signal is pushed out.
+
+The bot pings a [healthchecks.io](https://healthchecks.io) check every minute from the same
+cron scheduler as its other jobs. Silence past the grace period is the alert, and both checks
+notify the Discord webhook above, so there is still one place to look.
+
+| Gateway state | Ping |
+|---|---|
+| Never connected since start | nothing |
+| Healthy | `POST <url>` |
+| Stale | `POST <url>/fail`, body carries the reason |
+
+The silent first case is load-bearing. `GatewayHealthy()` is false for the ~26s a deploy needs
+to reach Ready, so a tick landing there would `/fail` on **every deploy** until the alerts
+stopped being read. It clears itself with no timer to tune: the gateway has either acknowledged
+a heartbeat or it has not.
+
+Set `HEALTHCHECKS_PING_URL` in `~/tbd-bot-secrets/.env` with period 1m and grace 5m. It is a
+credential in the opposite direction from the webhook — anyone holding it can ping success and
+**suppress** the alert.
+
+### After a reboot, and the disk
+Colima and the GitHub runner are both user LaunchAgents, and FileVault is on, so a reboot needs
+someone at the keyboard before anything starts. That was decided on 2026-07-29 and stands: the
+machine holds `BOTTOKEN` and the Firebase service account. This path is **untested** — it
+cannot be tested without a reboot. The dead-man's switch is what tells you it happened.
+
+The same switch covers the disk, indirectly and after the fact rather than as a warning.
+`KeepAlive.SuccessfulExit=true` in Colima's LaunchAgent restarts it only after a *clean* exit,
+so when the host volume filled on 2026-07-29 the agent exited 1 writing its config and launchd
+never retried. Docker survived only because a manually started VM was already up. Nothing
+watches free space — if it fills again the bot goes down, and the heartbeat stopping is how you
+find out. Check it by hand with `df -h /System/Volumes/Data`; `docker system df` shows what is
+reclaimable.
 
 ### Health is the gateway, not the HTTP server
 `/health` returns 503 once the Discord gateway stops acknowledging heartbeats, and the Docker

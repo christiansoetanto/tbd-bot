@@ -75,6 +75,9 @@ func InitMetrics() {
 		prometheus.MustRegister(ExternalAPIFailuresTotal)
 		prometheus.MustRegister(lastHeartbeatAckTimestamp)
 		prometheus.MustRegister(heartbeatLatencySeconds)
+		prometheus.MustRegister(ExternalHeartbeatTotal)
+		prometheus.MustRegister(externalHeartbeatLastPing)
+		prometheus.MustRegister(externalHeartbeatEnabled)
 	})
 }
 

@@ -116,6 +116,15 @@ func GatewayHealthy() (bool, string) {
 	return true, ""
 }
 
+// GatewayEverConnected reports whether Discord has acknowledged a heartbeat at
+// least once since start. It separates "not up yet" from "was up and died",
+// which GatewayHealthy deliberately merges — both are unhealthy, but only the
+// second is worth waking someone for.
+func GatewayEverConnected() bool {
+	ack, ok := currentAck()
+	return ok && !ack.IsZero()
+}
+
 // SetDiscordConnected records the gateway's own view of its connection.
 func SetDiscordConnected(connected bool) {
 	if connected {
