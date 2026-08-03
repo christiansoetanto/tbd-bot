@@ -206,6 +206,42 @@ func githubRequest(cfg config, method, path string, body []byte) (int, []byte, e
 	return res.StatusCode, respBody, err
 }
 
+// putFilePayload builds the Contents API body. sha is empty for a create and
+// set for an update; GitHub rejects each if given the other's shape.
+func putFilePayload(filename, content string, date time.Time, sha string) ([]byte, error) {
+	body := map[string]string{
+		"message": fmt.Sprintf("add office of readings for %s", date.Format("2006-01-02")),
+		"content": base64.StdEncoding.EncodeToString([]byte(content)),
+	}
+	if sha != "" {
+		body["sha"] = sha
+	}
+	return json.Marshal(body)
+}
+
+// fileSHA returns the current blob sha for a path, or "" when it does not
+// exist yet — in which case the write is a create and needs no sha.
+func fileSHA(cfg config, filename string) (string, error) {
+	status, body, err := githubRequest(cfg, http.MethodGet, "contents/"+url.PathEscape(filename), nil)
+	if err != nil {
+		return "", err
+	}
+	switch status {
+	case http.StatusOK:
+		var meta struct {
+			SHA string `json:"sha"`
+		}
+		if err := json.Unmarshal(body, &meta); err != nil {
+			return "", fmt.Errorf("parsing contents response: %w", err)
+		}
+		return meta.SHA, nil
+	case http.StatusNotFound:
+		return "", nil
+	default:
+		return "", fmt.Errorf("HTTP %d: %s", status, string(body))
+	}
+}
+
 func fileExists(cfg config, filename string) (bool, error) {
 	status, body, err := githubRequest(cfg, http.MethodGet, "contents/"+url.PathEscape(filename), nil)
 	if err != nil {
@@ -225,10 +261,20 @@ func fileExists(cfg config, filename string) (bool, error) {
 // a pull request per day, which is five API calls; for a backfill of hundreds of
 // days that is a lot of churn for no review value, so this writes directly.
 func putFile(cfg config, filename, content string, date time.Time) error {
-	payload, err := json.Marshal(map[string]string{
-		"message": fmt.Sprintf("add office of readings for %s", date.Format("2006-01-02")),
-		"content": base64.StdEncoding.EncodeToString([]byte(content)),
-	})
+	// An update needs the current blob sha; a create must not carry one. With
+	// --force the existence check above is skipped, so the sha is looked up
+	// here or the overwrite fails with `"sha" wasn't supplied` — the same
+	// reply the daily cron whitelists.
+	var sha string
+	if cfg.force {
+		existing, err := fileSHA(cfg, filename)
+		if err != nil {
+			return fmt.Errorf("looking up existing file sha: %w", err)
+		}
+		sha = existing
+	}
+
+	payload, err := putFilePayload(filename, content, date, sha)
 	if err != nil {
 		return err
 	}

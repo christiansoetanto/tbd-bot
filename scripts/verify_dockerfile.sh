@@ -41,9 +41,19 @@ if ! grep -q "wget" "$DOCKERFILE"; then
     exit 1
 fi
 
-# Check target metrics endpoint in HEALTHCHECK
-if ! grep -E -q "http://localhost:8080/metrics|:8080/metrics" "$DOCKERFILE"; then
-    echo "ERROR: HEALTHCHECK does not target http://localhost:8080/metrics"
+# Check target health endpoint in HEALTHCHECK. /health follows the Discord
+# gateway; /metrics answers 200 off the HTTP server alone, which is why the
+# container reported healthy for 33 hours during the 2026-08-01 outage.
+if ! grep -E -q "http://localhost:8080/health|:8080/health" "$DOCKERFILE"; then
+    echo "ERROR: HEALTHCHECK does not target http://localhost:8080/health"
+    exit 1
+fi
+
+# Reject a regression back to the metrics endpoint. Scoped to the HEALTHCHECK
+# instruction and its continuation line so the surrounding comments, which
+# discuss both endpoints, are not matched.
+if grep -A2 "^HEALTHCHECK" "$DOCKERFILE" | grep -E -q "8080/met[r]ics"; then
+    echo "ERROR: HEALTHCHECK targets the metrics endpoint, which answers 200 while the gateway is dead"
     exit 1
 fi
 

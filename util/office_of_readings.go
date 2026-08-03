@@ -75,8 +75,14 @@ func ParseOfficeOfReadings(r io.Reader, date time.Time) (title string, text stri
 }
 
 // GetOfficeOfReadingsText fetches today's office of readings.
+//
+// The timeout matters more here than on the dated path: this runs from the
+// daily cron, and http.Get has no deadline at all, so a hung iBreviary
+// connection would park the cron goroutine indefinitely with nothing to
+// observe but a cron that stopped posting.
 func GetOfficeOfReadingsText() (title string, text string, err error) {
-	res, err := http.Get(breviaryURL + "?s=ufficio_delle_letture")
+	client := &http.Client{Timeout: 30 * time.Second}
+	res, err := client.Get(breviaryURL + "?s=ufficio_delle_letture")
 	if err != nil {
 		return "", "", err
 	}

@@ -69,7 +69,7 @@ func main() {
 
 	defer database.Close(ctx)
 
-	handler := setupRoutes()
+	routes := setupRoutes()
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -77,7 +77,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: handler,
+		Handler: routes,
 	}
 
 	go func() {

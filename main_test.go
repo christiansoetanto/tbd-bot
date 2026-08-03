@@ -95,6 +95,27 @@ func TestMetricsEndpointServesWhileGatewayIsDown(t *testing.T) {
 	}
 }
 
+// scripts/verify_dockerfile.sh asserts the same healthcheck contract as the
+// Dockerfile, so the two drift apart silently — moving the probe to /health
+// left the script failing on a correct Dockerfile. Same shape as the CI
+// go-version drift: a second file encoding a contract nothing cross-checks.
+func TestVerifyScriptAgreesWithDockerfileHealthcheck(t *testing.T) {
+	script, err := os.ReadFile("scripts/verify_dockerfile.sh")
+	if err != nil {
+		t.Fatalf("failed to read verify_dockerfile.sh: %v", err)
+	}
+	s := string(script)
+	if !strings.Contains(s, ":8080/health") {
+		t.Error("verify_dockerfile.sh does not require the /health endpoint the Dockerfile probes")
+	}
+	// The stale assertion, verbatim: the script erroring because the
+	// HEALTHCHECK does *not* target /metrics is the defect, not any mention
+	// of the word.
+	if strings.Contains(s, "HEALTHCHECK does not target http://localhost:8080/metrics") {
+		t.Error("verify_dockerfile.sh still errors when the HEALTHCHECK does not target /metrics")
+	}
+}
+
 func TestDockerfileHealthcheckProbesGatewayAwareEndpoint(t *testing.T) {
 	content, err := os.ReadFile("Dockerfile")
 	if err != nil {
