@@ -8,9 +8,11 @@ import (
 
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -625,5 +627,190 @@ func TestDeployWorkflow(t *testing.T) {
 	}
 	if strings.TrimSpace(upCmd[1]) != "" {
 		t.Errorf("deploy.yml limits the deploy to %q; it must recreate the whole stack so Grafana picks up alerting provisioning", strings.TrimSpace(upCmd[1]))
+	}
+}
+
+// hostDiskCheck runs scripts/host-disk-check.sh against a stub ping server and
+// returns the paths it hit. The script measures the host volume, which the bot
+// cannot see from inside the Colima VM, so the measurement is injectable.
+func hostDiskCheck(t *testing.T, freeGB, minFreeGB string) []string {
+	t.Helper()
+
+	var mu sync.Mutex
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cmd := exec.Command("bash", "scripts/host-disk-check.sh")
+	cmd.Env = append(os.Environ(),
+		"HEALTHCHECKS_DISK_PING_URL="+server.URL,
+		"TBD_DISK_FREE_GB="+freeGB,
+		"TBD_DISK_MIN_FREE_GB="+minFreeGB,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("host-disk-check.sh failed: %v\n%s", err, out)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	return append([]string(nil), paths...)
+}
+
+// The 07-29 disk exhaustion killed the Colima LaunchAgent, and
+// KeepAlive.SuccessfulExit=true meant launchd never retried it. Nothing was
+// watching the volume that filled.
+func TestHostDiskCheckFailsBelowThreshold(t *testing.T) {
+	paths := hostDiskCheck(t, "5", "10")
+	if len(paths) != 1 {
+		t.Fatalf("expected exactly one ping, got %v", paths)
+	}
+	if !strings.HasSuffix(paths[0], "/fail") {
+		t.Errorf("expected the /fail URL with 5GB free under a 10GB threshold, got %q", paths[0])
+	}
+}
+
+func TestHostDiskCheckSucceedsAboveThreshold(t *testing.T) {
+	paths := hostDiskCheck(t, "50", "10")
+	if len(paths) != 1 {
+		t.Fatalf("expected exactly one ping, got %v", paths)
+	}
+	if strings.HasSuffix(paths[0], "/fail") {
+		t.Errorf("expected the success URL with 50GB free under a 10GB threshold, got %q", paths[0])
+	}
+}
+
+// The ping URL is a credential: anyone holding it can ping success and
+// suppress the alert. It lives in ~/tbd-bot-secrets/.env and must never reach
+// a tracked file, the same rule the Discord webhook follows.
+func TestHostDiskCheckKeepsPingURLOutOfGit(t *testing.T) {
+	for _, path := range []string{"scripts/host-disk-check.sh", "scripts/com.chris.tbd-bot-disk-check.plist"} {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("failed to read %s: %v", path, err)
+		}
+		if regexp.MustCompile(`hc-ping\.com/[0-9a-f]{8}`).Match(content) {
+			t.Errorf("%s contains a literal ping URL; it belongs in ~/tbd-bot-secrets/.env", path)
+		}
+	}
+
+	script, err := os.ReadFile("scripts/host-disk-check.sh")
+	if err != nil {
+		t.Fatalf("failed to read the disk check script: %v", err)
+	}
+	if !strings.Contains(string(script), "tbd-bot-secrets/.env") {
+		t.Error("host-disk-check.sh must read its ping URL from ~/tbd-bot-secrets/.env")
+	}
+	// Sourcing the file would execute it. It holds a Firebase service account
+	// JSON blob among other values, so the URL is grepped out instead.
+	if regexp.MustCompile(`(?m)^\s*(source|\.)\s`).Match(script) {
+		t.Error("host-disk-check.sh must not source the secrets file; grep the value out instead")
+	}
+}
+
+func TestDiskCheckLaunchAgentRunsTheScript(t *testing.T) {
+	content, err := os.ReadFile("scripts/com.chris.tbd-bot-disk-check.plist")
+	if err != nil {
+		t.Fatalf("failed to read the disk check plist: %v", err)
+	}
+	plist := string(content)
+	for _, sub := range []string{"host-disk-check.sh", "StartInterval", "RunAtLoad"} {
+		if !strings.Contains(plist, sub) {
+			t.Errorf("disk check plist missing %q", sub)
+		}
+	}
+}
+
+// The external switch is the only watcher that outlives this Mac, so the two
+// ways it can be silently absent — no URL, or a URL that stops working — both
+// need a rule of their own.
+func TestExternalHeartbeatProvisioned(t *testing.T) {
+	rules, err := os.ReadFile("grafana/provisioning/alerting/rules.yml")
+	if err != nil {
+		t.Fatalf("failed to read rules.yml: %v", err)
+	}
+	r := string(rules)
+	for _, sub := range []string{
+		"tbd_bot_external_heartbeat_enabled",
+		"tbd_bot_external_heartbeat_last_ping_timestamp_seconds",
+		"tbd-bot-heartbeat-disabled",
+		"tbd-bot-heartbeat-not-delivering",
+	} {
+		if !strings.Contains(r, sub) {
+			t.Errorf("rules.yml missing expected content: %q", sub)
+		}
+	}
+
+	// tbd-bot-target-down already owns "the bot is absent". With the policy
+	// grouping by alertname, an Alerting no-data state on these two would turn
+	// a single outage into three separate Discord messages.
+	for _, uid := range []string{"tbd-bot-heartbeat-disabled", "tbd-bot-heartbeat-not-delivering"} {
+		idx := strings.Index(r, "uid: "+uid)
+		if idx < 0 {
+			t.Fatalf("rule %s not found", uid)
+		}
+		rest := r[idx:]
+		if end := strings.Index(rest, "\n      - uid:"); end > 0 {
+			rest = rest[:end]
+		}
+		if !strings.Contains(rest, "noDataState: OK") {
+			t.Errorf("rule %s must use noDataState: OK so an outage is not reported twice", uid)
+		}
+	}
+
+	envExample, err := os.ReadFile(".env.example")
+	if err != nil {
+		t.Fatalf("failed to read .env.example: %v", err)
+	}
+	env := string(envExample)
+	for _, key := range []string{"HEALTHCHECKS_PING_URL", "HEALTHCHECKS_DISK_PING_URL"} {
+		if !strings.Contains(env, key) {
+			t.Errorf(".env.example does not document %s", key)
+		}
+	}
+
+	// The bot reads the ping URL through env_file, so compose needs no change
+	// — but only as long as env_file stays.
+	compose, err := os.ReadFile("docker-compose.yml")
+	if err != nil {
+		t.Fatalf("failed to read docker-compose.yml: %v", err)
+	}
+	if !strings.Contains(string(compose), "env_file") {
+		t.Error("docker-compose.yml no longer passes .env to the bot, so HEALTHCHECKS_PING_URL cannot reach it")
+	}
+}
+
+// A ping URL in a tracked file is a credential leak in the direction that
+// matters least visibly: it would let anyone suppress the alert.
+func TestNoPingURLInTrackedFiles(t *testing.T) {
+	out, err := exec.Command("git", "grep", "-lE", `hc-ping\.com/[0-9a-f]{8}`).CombinedOutput()
+	if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+		t.Errorf("ping URLs found in tracked files:\n%s", out)
+	}
+}
+
+func TestDashboardCoversExternalHeartbeat(t *testing.T) {
+	content, err := os.ReadFile("grafana/provisioning/dashboards/bot-dashboard.json")
+	if err != nil {
+		t.Fatalf("failed to read the dashboard: %v", err)
+	}
+	var dashboard map[string]any
+	if err := json.Unmarshal(content, &dashboard); err != nil {
+		t.Fatalf("dashboard is not valid JSON: %v", err)
+	}
+	body := string(content)
+	for _, metric := range []string{
+		"tbd_bot_external_heartbeat_enabled",
+		"tbd_bot_external_heartbeat_last_ping_timestamp_seconds",
+		"tbd_bot_external_heartbeat_total",
+	} {
+		if !strings.Contains(body, metric) {
+			t.Errorf("dashboard has no panel for %s", metric)
+		}
 	}
 }

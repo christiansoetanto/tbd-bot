@@ -179,3 +179,118 @@ groups:
             reason="unauthorized" means the credential for that API was revoked
             or rotated. GitHub uses GITHUBAPITOKEN and Discord uses BOTTOKEN,
             both from .env; recreate the container after changing either.
+
+      # The external switch is the only watcher that survives this Mac dying,
+      # so an unset ping URL is a silent single point of failure: provisioning
+      # succeeds, every dashboard stays green, and nothing is delivered. That
+      # is exactly how GRAFANA_DISCORD_WEBHOOK_URL could have failed.
+      - uid: tbd-bot-heartbeat-disabled
+        title: tbd-bot external dead-man's switch is not configured
+        condition: C
+        for: 5m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: tbd_bot_external_heartbeat_enabled
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [1]
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        # No data means the bot is not reporting at all, which tbd-bot-target-down
+        # already owns. Alerting here would send one outage to Discord twice,
+        # since the notification policy groups by alertname.
+        noDataState: OK
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: The bot is running but no external heartbeat URL is configured.
+          description: >-
+            HEALTHCHECKS_PING_URL is unset, so nothing outside this machine is
+            watching it. Put the ping URL in ~/tbd-bot-secrets/.env and run
+            `docker compose up -d --force-recreate tbd-bot`; a plain restart does
+            not re-read env_file.
+
+      # Catches the pinger being configured but broken: DNS failure, a deleted
+      # check answering 404, or a wedged cron. The multiplication holds the
+      # expression at 0 until the first ping is delivered, so a fresh deploy
+      # does not alert during the ~26s before the gateway connects.
+      - uid: tbd-bot-heartbeat-not-delivering
+        title: tbd-bot external heartbeat pings are not being delivered
+        condition: C
+        for: 5m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: (time() - tbd_bot_external_heartbeat_last_ping_timestamp_seconds) * (tbd_bot_external_heartbeat_last_ping_timestamp_seconds > bool 0)
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [600]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: OK
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: The bot has not delivered an external heartbeat ping for over 10 minutes.
+          description: >-
+            The bot is up and scraping fine, so the switch itself is broken and
+            healthchecks.io will alert on silence that has nothing to do with the
+            host. Check tbd_bot_external_heartbeat_total{result="error"} and
+            confirm the ping URL still exists.

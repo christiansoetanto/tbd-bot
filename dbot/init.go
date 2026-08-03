@@ -10,6 +10,7 @@ import (
 	"github.com/christiansoetanto/tbd-bot/logv2"
 	"github.com/christiansoetanto/tbd-bot/util"
 	"github.com/robfig/cron/v3"
+	"os"
 	"sync"
 	"time"
 )
@@ -134,13 +135,36 @@ func (u *usecase) registerSlashCommand(ctx context.Context) {
 	}
 }
 
+// heartbeatCronJob reports gateway liveness to an external dead-man's switch.
+// Prometheus and Grafana run on the same Mac Mini as the bot, so nothing here
+// can report that machine losing power, network or Colima — the alerter dies
+// with the thing it watches, and silence reads as health.
+func (u *usecase) heartbeatCronJob(ctx context.Context) func() {
+	heartbeat := util.NewHeartbeat(os.Getenv("HEALTHCHECKS_PING_URL"))
+	if !heartbeat.Enabled() {
+		logv2.Error(ctx, errors.New("HEALTHCHECKS_PING_URL is not set"),
+			"external heartbeat disabled: a host-down outage will not alert")
+	}
+	return func() {
+		util.IncCronExecutions("heartbeat")
+		heartbeat.Ping(ctx)
+	}
+}
+
 func (u *usecase) loadAllCronJobs(ctx context.Context) {
 	const DailyCron = "@daily"
 	const FridayCron = "0 0 * * 5"
 	const Every5SecondCron = "@every 5s"
+	const HeartbeatCron = "@every 1m"
 	success := 0
 	c := cron.New()
-	_, err := c.AddFunc(DailyCron, u.liturgicalCalendarCronJob(ctx))
+	_, err := c.AddFunc(HeartbeatCron, u.heartbeatCronJob(ctx))
+	if err != nil {
+		logv2.Error(ctx, err, "external heartbeat cron job failed to load")
+	} else {
+		success++
+	}
+	_, err = c.AddFunc(DailyCron, u.liturgicalCalendarCronJob(ctx))
 	if err != nil {
 		logv2.Error(ctx, err, "liturgical calendar cron job failed to load")
 	} else {

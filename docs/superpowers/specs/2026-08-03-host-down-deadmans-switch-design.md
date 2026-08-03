@@ -58,18 +58,27 @@ exports its own pinger state and Grafana alerts on it.
 
 ```
 tbd_bot_external_heartbeat_total{result="success|fail|error"}
-tbd_bot_external_heartbeat_last_success_timestamp_seconds
+tbd_bot_external_heartbeat_last_ping_timestamp_seconds
 tbd_bot_external_heartbeat_enabled
 ```
 
-An unset URL logs an error at startup and holds `enabled` at 0. One Grafana rule
-covers both `enabled == 0` and a `last_success` older than 5 minutes, which catches
-DNS failure, a revoked check, and a typo in the URL.
+The middle gauge tracks any *delivered* ping, healthy or failing, rather than only
+healthy ones. Tracking success alone would make a gateway outage read as a broken
+pinger as well, and `group_by: [alertname]` would then send that one outage to Discord
+twice. `result="error"` — a transport failure or a non-2xx answer — is the case where
+nothing was delivered and the external switch is genuinely blind.
 
-That rule uses `noDataState: OK`, deliberately unlike the gateway and target rules.
+An unset URL logs an error at startup and holds `enabled` at 0. Two rules cover the two
+ways the switch can be silently absent, kept separate so each says one thing:
+`tbd-bot-heartbeat-disabled` on `enabled < 1`, and `tbd-bot-heartbeat-not-delivering` on
+a last ping older than 10 minutes. The second multiplies by
+`(last_ping > bool 0)` so it stays at 0 until the first ping lands, which keeps a fresh
+deploy from alerting during the window before the gateway connects.
+
+Both use `noDataState: OK`, deliberately unlike the gateway and target rules.
 `target-down` already owns "the bot is absent"; with `group_by: [alertname]` an
-`Alerting` no-data state here would turn one outage into three Discord messages. This
-rule exists only for "the bot is up but its pinger is not working".
+`Alerting` no-data state here would turn one outage into three Discord messages. These
+rules exist only for "the bot is up but its pinger is not working".
 
 ### Host disk check
 

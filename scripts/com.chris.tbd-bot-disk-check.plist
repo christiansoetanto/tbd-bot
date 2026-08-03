@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Install with:
+    cp scripts/com.chris.tbd-bot-disk-check.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.chris.tbd-bot-disk-check.plist
+
+  The script path points at the runner's checkout, which is the live
+  deployment and is refreshed by every deploy.yml run.
+
+  Deliberately no KeepAlive. This is a periodic one-shot, and KeepAlive with
+  SuccessfulExit is what left Colima stopped after its 07-29 failure exit.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.chris.tbd-bot-disk-check</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>/Users/chris/actions-runner/_work/tbd-bot/tbd-bot/scripts/host-disk-check.sh</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StartInterval</key>
+	<integer>900</integer>
+	<key>StandardErrorPath</key>
+	<string>/Users/chris/Library/Logs/tbd-bot-disk-check.log</string>
+	<key>StandardOutPath</key>
+	<string>/Users/chris/Library/Logs/tbd-bot-disk-check.log</string>
+</dict>
+</plist>
