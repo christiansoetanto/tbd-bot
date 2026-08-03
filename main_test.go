@@ -339,6 +339,64 @@ func TestCIWorkflowGoVersionSatisfiesGoMod(t *testing.T) {
 	}
 }
 
+// grpcSecurityFloor is the lowest grpc-go release that carries no open
+// advisory against this module. Three Dependabot alerts stacked up on
+// google.golang.org/grpc while it sat at v1.53.0 — an authorization bypass via
+// a missing leading slash in :path (critical, fixed 1.79.3), xDS RBAC and
+// HTTP/2 issues (high, fixed 1.82.1), and HTTP/2 Rapid Reset (high, fixed
+// 1.56.3). The highest of those is the floor.
+const grpcSecurityFloor = "1.82.1"
+
+// grpc is an indirect dependency, so nothing in this repo imports it and no
+// build failure would ever announce a regression. Minimal version selection
+// will happily walk it back down if some parent module is bumped to one that
+// requires an older grpc, and the only symptom would be the alerts silently
+// reopening. This asserts the version actually selected rather than the text
+// in go.mod, because a require line can be present and not be what is built.
+func TestGrpcVersionClearsSecurityFloor(t *testing.T) {
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Version}}", "google.golang.org/grpc").Output()
+	if err != nil {
+		t.Fatalf("failed to resolve selected grpc version: %v", err)
+	}
+	selected := strings.TrimSpace(string(out))
+
+	if compareSemver(t, selected, grpcSecurityFloor) < 0 {
+		t.Errorf("google.golang.org/grpc resolves to %s, below the security floor v%s", selected, grpcSecurityFloor)
+	}
+}
+
+// compareSemver orders two versions numerically. Comparing them as strings
+// looks like it works and does not: "v1.9.0" sorts above "v1.82.1".
+func compareSemver(t *testing.T, a, b string) int {
+	t.Helper()
+	parse := func(v string) [3]int {
+		t.Helper()
+		match := regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)`).FindStringSubmatch(v)
+		if match == nil {
+			t.Fatalf("unparseable version %q", v)
+		}
+		var parts [3]int
+		for i := 0; i < 3; i++ {
+			n, err := strconv.Atoi(match[i+1])
+			if err != nil {
+				t.Fatalf("unparseable version %q: %v", v, err)
+			}
+			parts[i] = n
+		}
+		return parts
+	}
+	x, y := parse(a), parse(b)
+	for i := 0; i < 3; i++ {
+		if x[i] != y[i] {
+			if x[i] < y[i] {
+				return -1
+			}
+			return 1
+		}
+	}
+	return 0
+}
+
 func TestDockerComposeAndMonitoringSetup(t *testing.T) {
 	composeBytes, err := os.ReadFile("docker-compose.yml")
 	if err != nil {
