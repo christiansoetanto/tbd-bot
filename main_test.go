@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/christiansoetanto/tbd-bot/util"
 )
 
 type mockDiscordSession struct {
@@ -45,6 +47,68 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(body, "tbd_bot_users_vetted_total") {
 		t.Fatalf("expected metrics response to contain 'tbd_bot_users_vetted_total', got:\n%s", body)
+	}
+}
+
+// staterStub drives gateway liveness from the test rather than from a real
+// connection.
+type staterStub struct{ ack time.Time }
+
+func (s staterStub) LastHeartbeatAck() time.Time     { return s.ack }
+func (s staterStub) HeartbeatLatency() time.Duration { return 0 }
+
+// Docker called the container healthy for 33 hours while the bot was dead in
+// Discord, because the probe only proved the HTTP server was up. /health has
+// to fail when the gateway is stale or the healthcheck is decorative.
+func TestHealthEndpoint_ReflectsGatewayLiveness(t *testing.T) {
+	t.Cleanup(func() { util.SetGatewayStater(nil) })
+	handler := setupRoutes()
+
+	util.SetGatewayStater(staterStub{ack: time.Now()})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected %d with a live gateway, got %d", http.StatusOK, rec.Code)
+	}
+
+	util.SetGatewayStater(staterStub{ack: time.Now().Add(-util.GatewayStaleAfter - time.Minute)})
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected %d with a stale gateway, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "heartbeat") {
+		t.Errorf("expected the body to explain the failure, got %q", rec.Body.String())
+	}
+}
+
+// /metrics must stay unconditional: Prometheus has to keep scraping through an
+// outage, otherwise the series needed to alert on it stops existing.
+func TestMetricsEndpointServesWhileGatewayIsDown(t *testing.T) {
+	t.Cleanup(func() { util.SetGatewayStater(nil) })
+	util.SetGatewayStater(staterStub{ack: time.Now().Add(-util.GatewayStaleAfter - time.Minute)})
+
+	rec := httptest.NewRecorder()
+	setupRoutes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected /metrics to stay available during an outage, got %d", rec.Code)
+	}
+}
+
+func TestDockerfileHealthcheckProbesGatewayAwareEndpoint(t *testing.T) {
+	content, err := os.ReadFile("Dockerfile")
+	if err != nil {
+		t.Fatalf("failed to read Dockerfile: %v", err)
+	}
+	healthcheck := regexp.MustCompile(`(?ms)^HEALTHCHECK.*?\n\n`).FindString(string(content))
+	if healthcheck == "" {
+		t.Fatal("no HEALTHCHECK instruction found in Dockerfile")
+	}
+	if !strings.Contains(healthcheck, "/health") {
+		t.Errorf("HEALTHCHECK must probe /health so a dead gateway fails it, got:\n%s", healthcheck)
+	}
+	if strings.Contains(healthcheck, "/metrics") {
+		t.Errorf("HEALTHCHECK still probes /metrics, which answers 200 with the gateway dead:\n%s", healthcheck)
 	}
 }
 
@@ -165,8 +229,12 @@ func TestDockerfile_MultiStageAndHealthcheck(t *testing.T) {
 		t.Errorf("expected HEALTHCHECK to use wget")
 	}
 
-	if !strings.Contains(dockerfile, "http://localhost:8080/metrics") && !strings.Contains(dockerfile, ":8080/metrics") {
-		t.Errorf("expected HEALTHCHECK to query http://localhost:8080/metrics")
+	// Superseded on 2026-08-03: this asserted /metrics, which answers 200 off
+	// the HTTP server alone and so passed for the whole 33-hour outage.
+	// TestDockerfileHealthcheckProbesGatewayAwareEndpoint owns the endpoint
+	// choice now; this only checks the port is still right.
+	if !strings.Contains(dockerfile, "http://localhost:8080/health") && !strings.Contains(dockerfile, ":8080/health") {
+		t.Errorf("expected HEALTHCHECK to query http://localhost:8080/health")
 	}
 }
 
@@ -305,6 +373,100 @@ func TestDockerComposeAndMonitoringSetup(t *testing.T) {
 	envEx := string(envBytes)
 	if !strings.Contains(envEx, "GOMEMLIMIT=") || !strings.Contains(envEx, "PORT=") {
 		t.Errorf(".env.example missing expected variables")
+	}
+}
+
+// The dashboard is what gets looked at during an incident. If the gateway and
+// external-API series are not on it, the next outage looks exactly like the
+// last one: every panel healthy, bot dead.
+func TestDashboardCoversGatewayAndAPIFailures(t *testing.T) {
+	raw, err := os.ReadFile("grafana/provisioning/dashboards/bot-dashboard.json")
+	if err != nil {
+		t.Fatalf("failed to read dashboard: %v", err)
+	}
+	dashboard := string(raw)
+
+	requiredExprSubstrings := []string{
+		"tbd_bot_discord_last_heartbeat_ack_timestamp_seconds",
+		"tbd_bot_discord_connected",
+		"tbd_bot_discord_heartbeat_latency_seconds",
+		"tbd_bot_discord_gateway_events_total",
+		"tbd_bot_external_api_failures_total",
+	}
+	for _, sub := range requiredExprSubstrings {
+		if !strings.Contains(dashboard, sub) {
+			t.Errorf("dashboard has no panel querying %s", sub)
+		}
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("dashboard is not valid JSON: %v", err)
+	}
+}
+
+// Alerting is the only part of this that reaches the user when they are not
+// looking at Grafana, so its provisioning has to be checked into the repo
+// rather than clicked together in the UI where a volume wipe loses it.
+func TestAlertingProvisioned(t *testing.T) {
+	contactPoints, err := os.ReadFile("grafana/provisioning/alerting/contact-points.yml")
+	if err != nil {
+		t.Fatalf("failed to read contact-points.yml: %v", err)
+	}
+	cp := string(contactPoints)
+	if !strings.Contains(cp, "GRAFANA_DISCORD_WEBHOOK_URL") {
+		t.Error("contact point must read the webhook from GRAFANA_DISCORD_WEBHOOK_URL, not hardcode it")
+	}
+	if strings.Contains(cp, "discord.com/api/webhooks/") {
+		t.Error("contact-points.yml contains a literal webhook URL; that is a credential and must stay in .env")
+	}
+
+	rules, err := os.ReadFile("grafana/provisioning/alerting/rules.yml")
+	if err != nil {
+		t.Fatalf("failed to read rules.yml: %v", err)
+	}
+	r := string(rules)
+	requiredRuleSubstrings := []string{
+		"tbd_bot_discord_last_heartbeat_ack_timestamp_seconds",
+		"tbd_bot_external_api_failures_total",
+		`up{job="tbd-bot"}`,
+	}
+	for _, sub := range requiredRuleSubstrings {
+		if !strings.Contains(r, sub) {
+			t.Errorf("rules.yml missing expected content: %q", sub)
+		}
+	}
+
+	// Every signal that failed on 08-01 failed by going quiet. A rule that
+	// treats missing data as "fine" reproduces exactly that, so the
+	// availability rules have to alert on absence.
+	if !strings.Contains(r, "noDataState: Alerting") {
+		t.Error("rules.yml has no rule that alerts on missing data")
+	}
+	if strings.Count(r, "noDataState:") < 3 {
+		t.Errorf("expected every rule to declare noDataState explicitly, found %d", strings.Count(r, "noDataState:"))
+	}
+
+	if _, err := os.ReadFile("grafana/provisioning/alerting/notification-policies.yml"); err != nil {
+		t.Fatalf("failed to read notification-policies.yml: %v", err)
+	}
+
+	// A rule that fires into a contact point Grafana never received is the
+	// same silence as no rule at all.
+	compose, err := os.ReadFile("docker-compose.yml")
+	if err != nil {
+		t.Fatalf("failed to read docker-compose.yml: %v", err)
+	}
+	if !strings.Contains(string(compose), "GRAFANA_DISCORD_WEBHOOK_URL") {
+		t.Error("docker-compose.yml does not pass GRAFANA_DISCORD_WEBHOOK_URL to Grafana")
+	}
+
+	envExample, err := os.ReadFile(".env.example")
+	if err != nil {
+		t.Fatalf("failed to read .env.example: %v", err)
+	}
+	if !strings.Contains(string(envExample), "GRAFANA_DISCORD_WEBHOOK_URL") {
+		t.Error(".env.example does not document GRAFANA_DISCORD_WEBHOOK_URL")
 	}
 }
 

@@ -44,6 +44,51 @@ docker exec -it grafana grafana-cli admin reset-admin-password 'new-password'
 
 Update `.env` to match afterwards, or the file will disagree with reality.
 
+## Alerting
+Alerts are provisioned as code in `grafana/provisioning/alerting/` and delivered to a Discord
+webhook. A webhook is used instead of email because it needs no credentials, is not subject to
+spam filtering, and does not depend on `BOTTOKEN` or on the bot process — so it still delivers
+when the bot itself is what is down.
+
+Set `GRAFANA_DISCORD_WEBHOOK_URL` in `.env` (Discord: Server Settings → Integrations → Webhooks).
+Point it at a channel only you can read and set that channel to "All Messages" for a phone push.
+The URL is a credential — anyone holding it can post to that channel — so it is read from the
+environment and never committed.
+
+Three rules fire into it:
+
+| Rule | Fires when | No-data behaviour |
+|------|-----------|-------------------|
+| `tbd-bot-gateway-stale` | No Discord heartbeat acknowledged for over 5 minutes | Alerting |
+| `tbd-bot-target-down` | Prometheus cannot scrape the bot | Alerting |
+| `tbd-bot-external-api-failing` | Any GitHub or Discord API call failed in the last 15 minutes | OK |
+
+The first two alert on missing data on purpose. Every signal that failed during the 2026-08-01
+outage failed by going quiet rather than by going red, so a rule that treats absence as health
+would reproduce exactly that.
+
+### Health is the gateway, not the HTTP server
+`/health` returns 503 once the Discord gateway stops acknowledging heartbeats, and the Docker
+`HEALTHCHECK` probes it. It used to probe `/metrics`, which answers 200 off the HTTP server
+alone — that is why the container reported `healthy` for 33 hours while the bot was invisible
+in Discord. `/metrics` itself stays unconditional so Prometheus keeps scraping through an
+outage; a metrics endpoint that fails during an incident destroys the series needed to alert
+on it.
+
+### Removing a provisioned alert rule
+Deleting the file does **not** delete the rule. Grafana copies provisioned rules into its own
+database and keeps them after the file is gone — the same trap as `GF_SECURITY_ADMIN_PASSWORD`
+above. Removal takes an explicit directive in a provisioning file:
+
+```yaml
+apiVersion: 1
+deleteRules:
+  - orgId: 1
+    uid: the-rule-uid
+```
+
+Restart Grafana, confirm the rule is gone, then delete the directive file.
+
 ## Self-Hosted Runner Security
 To protect the local host environment and self-hosted runner from arbitrary code execution via external Fork Pull Requests:
 1. Open your repository on GitHub.

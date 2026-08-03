@@ -34,14 +34,17 @@ COPY --from=builder /app/tbd-bot .
 # The bot health check port
 EXPOSE 8080
 
-# Native Docker HEALTHCHECK using wget against the /metrics endpoint.
+# Native Docker HEALTHCHECK using wget against the /health endpoint, which
+# fails once the Discord gateway stops acknowledging heartbeats. Probing
+# /metrics instead reports healthy whenever the process is listening, which on
+# 2026-08-01 meant 33 hours of green while the bot was dead in Discord.
 # The HTTP server only starts after dbot.Init registers slash commands with
-# Discord, so /metrics is unreachable for as long as that round trip takes. A
+# Discord, so /health is unreachable for as long as that round trip takes. A
 # short start period makes the container flap to unhealthy during a normal
 # boot; 60s covers the registration without hiding a real hang, since
 # deploy.yml still fails the deployment at 120s.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/metrics || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Run as non-root user
 USER nobody:nobody

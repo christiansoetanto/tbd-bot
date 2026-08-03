@@ -70,6 +70,11 @@ func InitMetrics() {
 		prometheus.MustRegister(ComponentInteractionsTotal)
 		prometheus.MustRegister(HandlerDuration)
 		prometheus.MustRegister(HandlerRequestsTotal)
+		prometheus.MustRegister(DiscordConnected)
+		prometheus.MustRegister(GatewayEventsTotal)
+		prometheus.MustRegister(ExternalAPIFailuresTotal)
+		prometheus.MustRegister(lastHeartbeatAckTimestamp)
+		prometheus.MustRegister(heartbeatLatencySeconds)
 	})
 }
 

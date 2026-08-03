@@ -1,0 +1,16 @@
+# Everything routes to the single Discord contact point. There is one operator
+# and one channel, so splitting routes by severity would add configuration
+# without changing who gets woken up.
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: discord-ops
+    group_by:
+      - alertname
+    # Deliberately short: the failure this exists for went unnoticed for 33
+    # hours, so a few minutes of grouping delay is not the risk. repeat_interval
+    # is what stops an ongoing outage from going quiet after the first message.
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h

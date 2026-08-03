@@ -29,6 +29,7 @@ func (u *usecase) liturgicalCalendarCronJob(ctx context.Context) func() {
 					Embed:   embed,
 				})
 				if err != nil {
+					util.IncDiscordRESTFailure(err)
 					logv2.Error(ctx, err)
 				}
 			}

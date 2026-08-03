@@ -11,6 +11,7 @@ import (
 	"github.com/christiansoetanto/tbd-bot/util"
 	"github.com/robfig/cron/v3"
 	"sync"
+	"time"
 )
 
 type Resource struct {
@@ -60,9 +61,53 @@ func (u *usecase) Init(ctx context.Context) error {
 
 	return nil
 }
+
+// sessionStater exposes discordgo's heartbeat bookkeeping to util without
+// util having to import discordgo. LastHeartbeatAck is a plain field guarded
+// by the session's own embedded mutex, so it has to be read under that lock.
+type sessionStater struct {
+	s *discordgo.Session
+}
+
+func (a sessionStater) LastHeartbeatAck() time.Time {
+	a.s.RLock()
+	defer a.s.RUnlock()
+	return a.s.LastHeartbeatAck
+}
+
+func (a sessionStater) HeartbeatLatency() time.Duration {
+	return a.s.HeartbeatLatency()
+}
+
 func (u *usecase) openDiscordgoConn() error {
 	u.Session.Identify.Intents = discordgo.IntentGuildMessages | discordgo.IntentGuildMessageReactions | discordgo.IntentDirectMessages
+	u.registerGatewayObservers()
 	return u.Session.Open()
+}
+
+// registerGatewayObservers records gateway lifecycle transitions and points
+// util at this session's heartbeat clock. The counters describe what happened;
+// the heartbeat clock is what decides whether the bot is alive, because a
+// connection can wedge without ever emitting Disconnect.
+func (u *usecase) registerGatewayObservers() {
+	util.SetGatewayStater(sessionStater{s: u.Session})
+
+	u.Session.AddHandler(func(s *discordgo.Session, _ *discordgo.Connect) {
+		util.SetDiscordConnected(true)
+		util.IncGatewayEvent("connect")
+	})
+	u.Session.AddHandler(func(s *discordgo.Session, _ *discordgo.Disconnect) {
+		util.SetDiscordConnected(false)
+		util.IncGatewayEvent("disconnect")
+	})
+	u.Session.AddHandler(func(s *discordgo.Session, _ *discordgo.Resumed) {
+		util.SetDiscordConnected(true)
+		util.IncGatewayEvent("resumed")
+	})
+	u.Session.AddHandler(func(s *discordgo.Session, _ *discordgo.Ready) {
+		util.SetDiscordConnected(true)
+		util.IncGatewayEvent("ready")
+	})
 }
 func (u *usecase) CloseDiscordgoConn() error {
 	return u.Session.Close()

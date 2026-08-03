@@ -19,6 +19,7 @@ import (
 	"github.com/christiansoetanto/tbd-bot/dbot/handler"
 	"github.com/christiansoetanto/tbd-bot/logv2"
 	"github.com/christiansoetanto/tbd-bot/provider"
+	"github.com/christiansoetanto/tbd-bot/util"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -146,7 +147,16 @@ func gracefulShutdown(ctx context.Context, srv *http.Server, session DiscordClos
 func setupRoutes() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	// Liveness follows the Discord gateway, not the HTTP server. The two came
+	// apart on 2026-08-01: the server answered every probe for 33 hours while
+	// the bot was invisible in Discord, so a probe that only proves the
+	// process is listening proves nothing worth knowing.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if healthy, reason := util.GatewayHealthy(); !healthy {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "UNHEALTHY /health: %s", reason)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK /health"))
 	})
