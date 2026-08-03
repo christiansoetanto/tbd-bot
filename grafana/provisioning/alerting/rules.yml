@@ -1,0 +1,181 @@
+# Alert rules for the failure modes the 2026-08-01 outage went through
+# undetected. Each one is written so that the absence of data is itself an
+# alert, because every signal that failed that day failed by going quiet
+# rather than by going red.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: tbd-bot-availability
+    folder: tbd-bot
+    interval: 1m
+    rules:
+      # The rule that would have caught the outage. Heartbeat acks stop the
+      # moment the gateway dies, so this expression grows on its own with no
+      # handler needing to fire. When no heartbeat has ever been acked the
+      # gauge is 0 and the subtraction yields the current epoch, which is
+      # comfortably over the threshold — a bot that never finished
+      # identifying alerts the same as one that dropped.
+      - uid: tbd-bot-gateway-stale
+        title: tbd-bot Discord gateway is not acknowledging heartbeats
+        condition: C
+        for: 5m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: time() - tbd_bot_discord_last_heartbeat_ack_timestamp_seconds
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [300]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        # If the series disappears entirely the bot is not reporting at all,
+        # which is worse than a stale heartbeat, not better.
+        noDataState: Alerting
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: The bot has not had a Discord heartbeat acknowledged for over 5 minutes.
+          description: >-
+            The process may still be answering /metrics while being invisible in
+            Discord. Check `docker logs tbd-bot` for gateway errors and confirm
+            BOTTOKEN is still valid with
+            `curl -H "Authorization: Bot $BOTTOKEN" https://discord.com/api/v10/users/@me`.
+            A 401 means the token was reset: put the new one in both .env files
+            and run `docker compose up -d --force-recreate tbd-bot`, since a
+            plain restart does not re-read env_file.
+
+      # Covers the case where the container is gone, wedged, or the HTTP
+      # server itself died — none of which the rule above can observe.
+      - uid: tbd-bot-target-down
+        title: tbd-bot is not being scraped
+        condition: C
+        for: 5m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: up{job="tbd-bot"}
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [1]
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: Alerting
+        execErrState: Alerting
+        labels:
+          severity: critical
+        annotations:
+          summary: Prometheus cannot scrape tbd-bot.
+          description: >-
+            The container is down, unhealthy, or its HTTP server has stopped.
+            Check `docker ps -a --filter name=tbd-bot` and `docker logs tbd-bot`.
+
+      # The GitHub token died on 2026-07-30 and Office of Readings pushed
+      # nothing for four days. Nothing recorded it, so nothing could alert.
+      - uid: tbd-bot-external-api-failing
+        title: tbd-bot external API calls are failing
+        condition: C
+        for: 5m
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: sum by (api, reason) (increase(tbd_bot_external_api_failures_total[15m]))
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        # Unlike the two above, no data here is the healthy state: the counter
+        # has no series until something actually fails.
+        noDataState: OK
+        execErrState: Alerting
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.api }} calls are failing with {{ $labels.reason }}.'
+          description: >-
+            reason="unauthorized" means the credential for that API was revoked
+            or rotated. GitHub uses GITHUBAPITOKEN and Discord uses BOTTOKEN,
+            both from .env; recreate the container after changing either.

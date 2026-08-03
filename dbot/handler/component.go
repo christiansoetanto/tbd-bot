@@ -26,6 +26,7 @@ func (h *handler) cmPollVoteHandlerFunc(ctx context.Context) func(s *discordgo.S
 			logv2.Error(ctx, err, i.Interaction.MessageComponentData())
 			return err
 		}
+		util.IncComponentInteractions("cm_poll_vote")
 		newAnswer := voteValue[0]
 		poll, err := h.Provider.GetPoll(ctx, pollId)
 		if err != nil {
@@ -117,6 +118,7 @@ func (h *handler) cmPollShowVotersHandlerFunc(ctx context.Context) func(s *disco
 	ctx = logv2.InitRequestContext(ctx)
 	ctx = logv2.InitFuncContext(ctx)
 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
+		util.IncComponentInteractions("cm_poll_show_voters")
 		pollId := i.Message.ID
 		userId := i.Interaction.Member.User.ID
 		guildId := i.GuildID

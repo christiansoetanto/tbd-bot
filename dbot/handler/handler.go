@@ -2,10 +2,12 @@ package handler
 
 import (
 	"context"
+	"sync"
+
 	"github.com/bwmarrin/discordgo"
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/provider"
-	"sync"
+	"github.com/christiansoetanto/tbd-bot/util"
 )
 
 type handler struct {
@@ -39,13 +41,13 @@ func GetHandler(resource *Resource) Handler {
 
 func (h *handler) GetHandlers(ctx context.Context) []interface{} {
 	return []interface{}{
-		h.readyHandler(ctx),
-		h.guildCreateHandler(ctx),
-		h.vettingQuestioningKeywordDetectionHandler(ctx),
+		util.DecorateEventHandler("ready", h.readyHandler(ctx)),
+		util.DecorateEventHandler("guild_create", h.guildCreateHandler(ctx)),
+		util.DecorateEventHandler("vetting_questioning_keyword", h.vettingQuestioningKeywordDetectionHandler(ctx)),
 		h.buildCommandHandler(ctx),
 		h.buildComponentHandler(ctx),
-		h.questionMoverMessageReactionAddHandler(ctx),
-		h.cmQuestionLimiterHandler(ctx),
-		h.invalidVettingResponseHandler(ctx),
+		util.DecorateEventHandler("question_mover_reaction_add", h.questionMoverMessageReactionAddHandler(ctx)),
+		util.DecorateEventHandler("cm_question_limiter", h.cmQuestionLimiterHandler(ctx)),
+		util.DecorateEventHandler("invalid_vetting_response", h.invalidVettingResponseHandler(ctx)),
 	}
 }

@@ -2,7 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
+
 	"github.com/bwmarrin/discordgo"
 	"github.com/christiansoetanto/tbd-bot/config"
 	"github.com/christiansoetanto/tbd-bot/database"
@@ -10,13 +19,13 @@ import (
 	"github.com/christiansoetanto/tbd-bot/dbot/handler"
 	"github.com/christiansoetanto/tbd-bot/logv2"
 	"github.com/christiansoetanto/tbd-bot/provider"
-	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"strconv"
-	"syscall"
+	"github.com/christiansoetanto/tbd-bot/util"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+type DiscordCloser interface {
+	Close() error
+}
 
 func main() {
 	ctx := context.Background()
@@ -58,44 +67,102 @@ func main() {
 		log.Fatal(err)
 	}
 
-	defer func() {
-		e := dbotObject.CloseDiscordgoConn()
-		if e != nil {
-			logv2.Debug(ctx, logv2.Warning, "discordgo connection closed with error: "+e.Error())
-		} else {
-			logv2.Debug(ctx, logv2.Info, "discordgo connection closed")
-		}
-		database.Close(ctx)
-	}()
+	defer database.Close(ctx)
 
-	// Health check endpoint
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK /health"))
-	})
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK /"))
-	})
-	//prov.HelloWorld(ctx)
-	// Wait here until CTRL-C or other term signal is received.
-	logv2.Debug(ctx, logv2.Info, "Session is now running.  Press CTRL-C to exit.")
-	// Start HTTP server in a goroutine
+	routes := setupRoutes()
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // Default port for Azure App Service
+		port = "8080"
+	}
+
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: routes,
 	}
 
 	go func() {
 		logv2.Debug(ctx, logv2.Info, fmt.Sprintf("Starting HTTP server on port %s", port))
-		if err := http.ListenAndServe(":"+port, nil); err != nil {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logv2.Error(ctx, err, "HTTP server failed")
 		}
 	}()
-	sc := make(chan os.Signal, 1)
-	//syscall.SIGTERM,
-	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
-	<-sc
 
-	logv2.Debug(ctx, logv2.Info, "Gracefully shutting down.")
+	logv2.Debug(ctx, logv2.Info, "Session is now running. Press CTRL-C to exit.")
+
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
+
+	if err := gracefulShutdown(ctx, srv, session, sc); err != nil {
+		logv2.Error(ctx, err, "Error during graceful shutdown")
+	}
+}
+
+func gracefulShutdown(ctx context.Context, srv *http.Server, session DiscordCloser, sigChan <-chan os.Signal) error {
+	sig := <-sigChan
+	logv2.Debug(ctx, logv2.Info, fmt.Sprintf("Received signal %v, shutting down gracefully...", sig))
+
+	var firstErr error
+
+	if srv != nil {
+		httpCtx, httpCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer httpCancel()
+		if err := srv.Shutdown(httpCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logv2.Error(ctx, err, "HTTP server shutdown error")
+			firstErr = err
+		} else {
+			logv2.Debug(ctx, logv2.Info, "HTTP server shut down successfully")
+		}
+	}
+
+	if session != nil {
+		sessionCtx, sessionCancel := context.WithTimeout(ctx, 5*time.Second)
+		defer sessionCancel()
+
+		sessionErrChan := make(chan error, 1)
+		go func() {
+			sessionErrChan <- session.Close()
+		}()
+
+		select {
+		case err := <-sessionErrChan:
+			if err != nil {
+				logv2.Error(ctx, err, "Discord session close error")
+				if firstErr == nil {
+					firstErr = err
+				}
+			} else {
+				logv2.Debug(ctx, logv2.Info, "Discord session closed successfully")
+			}
+		case <-sessionCtx.Done():
+			logv2.Error(ctx, sessionCtx.Err(), "Discord session close timed out")
+			if firstErr == nil {
+				firstErr = sessionCtx.Err()
+			}
+		}
+	}
+
+	return firstErr
+}
+
+func setupRoutes() http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	// Liveness follows the Discord gateway, not the HTTP server. The two came
+	// apart on 2026-08-01: the server answered every probe for 33 hours while
+	// the bot was invisible in Discord, so a probe that only proves the
+	// process is listening proves nothing worth knowing.
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if healthy, reason := util.GatewayHealthy(); !healthy {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "UNHEALTHY /health: %s", reason)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK /health"))
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK /"))
+	})
+	return mux
 }

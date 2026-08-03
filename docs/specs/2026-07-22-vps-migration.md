@@ -1,0 +1,102 @@
+# Spec: Azure App Service to Mac Mini Migration
+**Lifecycle status:** code complete on `feature/mac-mini-migration`; host setup and cutover pending
+
+## Goal
+Migrate the `tbd-bot` deployment architecture from its current host to an M4 Mac Mini home server. This involves optimizing the Docker container, establishing deep application metrics (Prometheus/Grafana), and setting up automated CI/CD via a local GitHub Runner.
+
+The current production host is the Azure Web App `tbdbot-cicd`, deployed by `.github/workflows/master_tbdbot-cicd.yml`. (Earlier drafts of this spec said Heroku; the leftover `Procfile` is a relic of that older host and is no longer in use.)
+
+## Non-goals
+- Migrating to a Cloud VPS or Serverless architecture.
+- Modifying the core Go application logic beyond adding Prometheus metrics and graceful shutdown logic.
+- Establishing remote/external access to the Grafana dashboard.
+
+## Constraints
+- The Mac Mini must maintain persistent internet access for the Discord WebSocket session.
+- Secrets (`BOTTOKEN`, etc.) must be stored securely in a local `.env` file on the Mac Mini, and securely injected into the GitHub Actions workspace.
+- Deployments must be automated via GitHub Actions. **Self-hosted runner security must be enforced** by strictly tying workflows to the `master` branch and disabling workflows from fork Pull Requests via GitHub Repository Settings.
+- The system and application timezone must remain in UTC.
+- The bot must avoid Discord Gateway bans by implementing a graceful `SIGTERM` shutdown that calls `discordgo.Session.Close()`.
+- Only one instance may run against the production `BOTTOKEN` at a time. The Azure Web App must be stopped before the Mac Mini stack starts with production credentials; two live instances cause duplicate command replies, duplicate cron posts, and concurrent writes to the same Firestore collections.
+- The `.env` on the Mac Mini must carry every variable the code reads, not just the deployment-specific ones. `TBDENV` in particular is the Firestore collection suffix — unset, the bot silently reads and writes empty `users_` / `questions_` / `polls_` / `logs_` collections while still loading production guild config.
+
+## Decision log
+
+| # | Decision | Choice |
+|---|---|---|
+| 1 | Hosting Platform | M4 Mac Mini Home Server. |
+| 2 | Metrics Method | Attach `/metrics` endpoint to the existing port 8080 HTTP server. |
+| 3 | Metrics Scope | Track standard operational metrics AND business-specific counters (Q&A moves, vetting, cron runs). |
+| 4 | Containerization | Multi-stage Dockerfile (Alpine base) compiled with `CGO_ENABLED=0` and a `wget`-based HEALTHCHECK. |
+| 5 | Deployment Pipeline | GitHub Self-Hosted Runner installed on the Mac Mini. Includes concurrency cancellation to prevent race conditions. |
+| 6 | RED Metrics | Use manual Prometheus timer decorators injected into specific handlers to automatically measure Latency, Success Rate, and QPS (avoiding slow Go reflection). |
+| 7 | Data Persistence | Use **Docker Named Volumes** for Prometheus and Grafana. Prometheus limited to 14d/1GB retention. Bot bounded by Docker memory limits and a matching `GOMEMLIMIT`. |
+| 8 | Dashboards as Code | Use Grafana Provisioning to auto-load Dashboards and Datasources from JSON files checked into the Git repository. |
+| 9 | Remote Access | Grafana remains local-only for maximum security by explicitly binding to `127.0.0.1:3000`. Access instructions will be documented in the README. |
+| 10 | CI Validation | Enforce `actionlint` for YAML testing, implement a native Docker `HEALTHCHECK`, and poll `docker inspect` post-deploy. |
+| 11 | Cutover | Manual, old-off-then-new-on. Stop the Azure Web App, confirm the bot is offline in Discord, then dry-run and merge. Azure stays stopped (not deleted) for a few days so rollback is one click. |
+| 12 | First execution | The stack is run by hand on the Mac Mini before merging. `deploy.yml` fires only on push to `master`, so without a dry run its first execution would also be the first real test of the image build, compose command, and secrets. |
+| 13 | Container runtime | **Colima**, not Docker Desktop — headless, no GUI app, lower idle overhead. Note that it does *not* buy unattended reboot recovery on this machine: `brew services` installs a user LaunchAgent, and FileVault rules out automatic login. |
+| 15 | Reboot recovery | Accept manual login after a reboot rather than disabling FileVault. The machine stores `BOTTOKEN` and the Firebase service account JSON; disk encryption outweighs unattended recovery from a rare event. Containers restart on their own once someone logs in, via `restart: unless-stopped`. |
+| 16 | Secrets storage | A plain `.env` at `~/tbd-bot-secrets/.env` on the runner host, copied into the workspace at deploy time — **not** GitHub Actions Secrets. See the note below for why, and for the conditions that should end this choice. |
+| 14 | Dry-run credentials | Production. There is no staging bot token, so the dry run is itself the live cutover — Azure is stopped first, and the bot is offline for the duration of the build. |
+
+### Note on decision 16: secrets on disk
+
+This works only because three things are true: one person owns the repository, that
+same person owns the runner hardware, and there is exactly one deployment target.
+
+The real argument for it is that the secrets never enter GitHub at all. A compromised
+GitHub account does not expose `BOTTOKEN` or the Firebase service account JSON, because
+they only ever existed on hardware in the owner's house. That is a genuine property,
+and it is worth the operational cost at this scale.
+
+The file sits outside the repository because `actions/checkout` defaults to
+`clean: true`, which runs `git clean -ffdx` — the `-x` deletes ignored files, so a
+`.env` inside the workspace would be wiped before every deploy. `.env` is *also*
+gitignored, which is a separate protection: the deploy step and the manual dry run both
+copy the real file into the repository root, and that copy must never be committable.
+
+An earlier version of this rationale claimed the layout prevents exfiltration by
+malicious pull requests. It does not — a workflow step that can read the workspace can
+read `$HOME` just as easily. What actually prevents that is `deploy.yml` triggering only
+on push to `master`, so a pull request cannot fire it, plus the fork-PR approval setting.
+
+**Stop using this the moment either becomes true:**
+
+- A second person can merge to `master`.
+- A second machine deploys.
+
+At that point the local file stops being a security decision and becomes an unmanaged
+one — no distribution, no rotation, no audit trail, and no way to scope production
+secrets to production jobs. The replacement, in increasing order of strength:
+
+1. **GitHub Actions Secrets**, injected per job. Add a `production` Environment for
+   required reviewers and branch restrictions.
+2. **OIDC federation** to GCP Secret Manager via Workload Identity Federation. The
+   runner exchanges a short-lived GitHub OIDC token for credentials that expire in
+   minutes, and no long-lived secret is stored anywhere. This project already runs on
+   Firestore, so the Firebase service account JSON — the longest-lived and most
+   damaging credential here — is exactly what that eliminates.
+
+## Acceptance criteria
+- **Wave 1 (Metrics & Lifecycle):** The Go codebase is updated to expose `/metrics` on port 8080. A graceful `SIGTERM` trap closes the Discord session. RED metrics are manually injected into event handlers.
+- **Wave 2 (Docker & Monitoring Setup):** A multi-stage `Dockerfile` is implemented with a native `HEALTHCHECK`. A `docker-compose.yml` is created to launch `tbd-bot` (with `GOMEMLIMIT` and memory limits), `prometheus` (with 14d/1GB limits), and `grafana` (bound to `127.0.0.1`). Baseline JSON dashboards are provided.
+- **Wave 3 (Pipeline Setup):** A `.github/workflows/deploy.yml` action is configured with `cancel-in-progress: true`, secure `.env` workspace injection, and a true Docker health-check polling step.
+- **Wave 4 (Host Setup & Cutover):** Docker, the self-hosted runner, and `~/tbd-bot-secrets/.env` exist on the Mac Mini. The compose command in `deploy.yml` matches what is actually installed. The stack has been built and run by hand on the Mac Mini and reported healthy. The Azure Web App is stopped, the branch is merged, and the bot is confirmed online with metrics visible in Grafana.
+
+## Clarifications
+
+### 2026-07-29
+- The prior host is Azure App Service (`tbdbot-cicd`), not Heroku. The spec's original framing was wrong; the `Procfile` predates Azure and is unused.
+- Cutover is explicitly in scope. It was missing from the original plan, which ended at the pipeline being configured and left two live instances as an unhandled outcome.
+- The builder image must track `go.mod`. The pinned `golang:1.22-alpine` was older than `go 1.25.0` and the Docker build could not have succeeded; the version relationship is now asserted by `TestDockerfileGoVersionSatisfiesGoMod` rather than a literal tag.
+- The Docker-related tests are text assertions over file contents, not executions. They are not evidence that the image builds or that the stack runs; only the manual dry run on the Mac Mini is.
+- `deploy.yml` invokes Compose V2 (`docker compose`), not the standalone `docker-compose` binary, which Docker Desktop no longer ships. The dry run must use the identical command, or it would step around the most likely failure.
+- The dry run cannot prove the runner works. The `launchd` service has a minimal `PATH` and will not necessarily find the Docker CLI, so that is verified separately from the runner's own environment.
+- Runtime is Colima rather than Docker Desktop. The original reason given — that Colima recovers from an unattended reboot — turned out to be wrong on this machine: `brew services start colima` installs a user LaunchAgent, which needs a login session, and FileVault is on so automatic login is unavailable. Colima is still the right pick for being headless and cheap at idle, but the reboot story is the same as Docker Desktop's. Verified on the Mac Mini: `~/Library/LaunchAgents/homebrew.mxcl.colima.plist`, `fdesetup status` reports `FileVault is On`, and no `autoLoginUser` is set.
+- The GitHub runner is installed **without `sudo`** on macOS. `svc.sh` rejects it outright (`Must not run with sudo`) and installs a LaunchAgent under `~/Library/LaunchAgents/`; only the Linux runner uses a root systemd unit. An earlier draft of the setup guide carried the Linux instructions and was wrong. This also retires a concern raised against the earlier draft — that the runner might execute as a different user and so miss `~/.docker/config.json` and the Colima socket. A LaunchAgent runs as the installing user, so as long as the same user installs Colima and the runner, ownership lines up by construction. The minimal-`PATH` concern is unaffected and still needs its own check.
+- Reboot behaviour is therefore symmetric: Colima and the runner are both LaunchAgents, so neither starts before login and the runner cannot fire a deployment at a dead Docker daemon. The bot is offline for the pre-login window and that is the whole of it.
+- The dry run uses production credentials because no staging bot exists. This collapses "dry run" and "cutover" into one sequence: Azure stops first, the bot is offline while the image builds, and the dry run doubles as the go-live. The acceptance check therefore includes reading real Firestore data, since a wrong `TBDENV` would otherwise look like a healthy but empty bot.
+
+**Roles touched:** none

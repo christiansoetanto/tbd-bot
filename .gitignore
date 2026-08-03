@@ -26,3 +26,8 @@ LogFiles/
 webapp_logs.zip
 deployments/
 .idea/
+# macOS
+.DS_Store
+
+# Local secrets
+.env

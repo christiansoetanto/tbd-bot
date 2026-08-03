@@ -1,0 +1,68 @@
+services:
+  tbd-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tbd-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - GOMEMLIMIT=${GOMEMLIMIT:-200MiB}
+      - PORT=${PORT:-8080}
+    ports:
+      - "127.0.0.1:8080:8080"
+    mem_limit: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=14d'
+      - '--storage.tsdb.retention.size=1GB'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    mem_limit: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    # Host port 9400, deliberately outside the 3000-3010 range that local Node
+    # dev servers occupy. When one already holds the port, the forward loses
+    # the bind silently: Grafana runs fine inside the network while the host
+    # port serves someone else's app.
+    ports:
+      - "127.0.0.1:9400:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Read by grafana/provisioning/alerting/contact-points.yml via
+      # $__env{}, which keeps the webhook — a credential — out of git.
+      - GRAFANA_DISCORD_WEBHOOK_URL=${GRAFANA_DISCORD_WEBHOOK_URL}
+    mem_limit: 256m
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  prometheus_data:
+  grafana_data:

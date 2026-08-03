@@ -112,6 +112,7 @@ func (h *handler) cmVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
 			reportInteractionError(ctx, s, i.Interaction, err)
 			return err
 		}
+		util.IncCMActions("verify")
 		logv2.Debug(ctx, logv2.Info, logv2.Finish)
 		return nil
 	}
@@ -300,6 +301,7 @@ func (h *handler) cmQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
 			return err
 		}
 
+		util.IncCMActions("question_one")
 		logv2.Debug(ctx, logv2.Info, logv2.Finish)
 		return nil
 	}

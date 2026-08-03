@@ -11,6 +11,7 @@ import (
 
 func (u *usecase) liturgicalCalendarCronJob(ctx context.Context) func() {
 	return func() {
+		util.IncCronExecutions("calendar")
 		embed, isMentionLatinCath, err := util.GenerateCalendarEmbed()
 		if err != nil {
 			logv2.Error(ctx, err)
@@ -28,6 +29,7 @@ func (u *usecase) liturgicalCalendarCronJob(ctx context.Context) func() {
 					Embed:   embed,
 				})
 				if err != nil {
+					util.IncDiscordRESTFailure(err)
 					logv2.Error(ctx, err)
 				}
 			}

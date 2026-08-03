@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Inject environment secrets
+        run: cp ~/tbd-bot-secrets/.env .env
+
+      - name: Deploy container stack
+        run: docker compose up -d --build
+
+      - name: Post-deployment health check
+        run: |
+          echo "Waiting for container to become healthy..."
+          timeout=120
+          elapsed=0
+          until [ "$elapsed" -ge "$timeout" ]; do
+            status=$(docker inspect --format='{{json .State.Health.Status}}' tbd-bot 2>/dev/null || echo '"unknown"')
+            if [ "$status" = '"healthy"' ]; then
+              echo "Container tbd-bot is healthy!"
+              exit 0
+            fi
+            echo "Container status is $status, waiting..."
+            sleep 5
+            elapsed=$((elapsed + 5))
+          done
+          echo "Health check timed out after ${timeout}s!"
+          exit 1

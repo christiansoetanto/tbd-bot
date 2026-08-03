@@ -21,6 +21,7 @@ import (
 
 func (u *usecase) officeOfReadingsCronJob(ctx context.Context) func() {
 	return func() {
+		util.IncCronExecutions("office_of_readings")
 		embed, err := util.GenerateOfficeOfReadingsEmbeds()
 		if err != nil {
 			return
@@ -29,6 +30,7 @@ func (u *usecase) officeOfReadingsCronJob(ctx context.Context) func() {
 			if config.RegisteredFeature[domain.FeatureKeyOfficeOfReadingsCron] {
 				_, err = u.Session.ChannelMessageSendEmbeds(config.Channel.OfficeOfReadings, embed)
 				if err != nil {
+					util.IncDiscordRESTFailure(err)
 					logv2.Error(ctx, err)
 				}
 			}
@@ -38,6 +40,7 @@ func (u *usecase) officeOfReadingsCronJob(ctx context.Context) func() {
 
 func (u *usecase) officeOfReadingsCronJob2(ctx context.Context) func() {
 	return func() {
+		util.IncCronExecutions("office_of_readings_2")
 		ctx = logv2.InitRequestContext(ctx)
 		ctx = logv2.InitFuncContext(ctx)
 		logv2.Debug(ctx, logv2.Info, "Starting office of readings cron job")
@@ -148,6 +151,7 @@ func hit(ctx context.Context, method string, path string, payload any) (string, 
 
 	res, err := client.Do(req)
 	if err != nil {
+		util.IncExternalAPIFailure("github", "transport_error")
 		logv2.Error(ctx, err)
 		return "", err
 	}
@@ -176,6 +180,11 @@ func hit(ctx context.Context, method string, path string, payload any) (string, 
 				return string(body), nil
 			}
 		}
+		// Counted only past the whitelist, so the expected "Reference already
+		// exists" reply does not read as an outage. A revoked token lands here
+		// as reason="unauthorized", which is what went unnoticed for four days
+		// starting 2026-07-30.
+		util.IncExternalAPIFailure("github", util.HTTPFailureReason(res.StatusCode))
 		return "", errors.New(apiErr.Message)
 	}
 

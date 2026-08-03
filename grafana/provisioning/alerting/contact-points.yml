@@ -1,0 +1,26 @@
+# Alerts go to a Discord webhook rather than email. A webhook needs no
+# credentials, is not subject to spam filtering, and — the point that matters
+# here — does not depend on BOTTOKEN or on the bot process, so it still
+# delivers when the thing it is reporting on is dead.
+#
+# The URL is a credential: anyone holding it can post to the channel. It stays
+# in .env and reaches Grafana as an environment variable, so this file is safe
+# to commit.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: discord-ops
+    receivers:
+      # An explicit UID keeps provisioning idempotent. Without one Grafana
+      # generates a fresh UID per apply, which orphans the old receiver and
+      # leaves the notification policy pointing at a receiver that no longer
+      # matches.
+      - uid: tbd-bot-discord-ops
+        type: discord
+        settings:
+          url: $__env{GRAFANA_DISCORD_WEBHOOK_URL}
+          title: '{{ template "default.title" . }}'
+          message: '{{ template "default.message" . }}'
+          use_discord_username: false
+        disableResolveMessage: false

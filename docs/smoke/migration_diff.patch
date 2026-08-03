@@ -1,0 +1,2534 @@
+diff --git a/.DS_Store b/.DS_Store
+index 01357e8..195ad37 100644
+Binary files a/.DS_Store and b/.DS_Store differ
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..0bec714
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,20 @@
++# Discord Bot Token
++BOTTOKEN=
++
++# Environment Toggles
++DEVMODE=FALSE
++TBDENV=prod
++PORT=8080
++GOMEMLIMIT=200MiB
++
++# Cloud Function APIs
++ROMCAL_API_FUNCTIONS_URL=
++
++# GitHub API Token (if used by the bot)
++GITHUBAPITOKEN=
++
++# Firebase Service Account JSON (Keep this entirely on one line if possible, or ensure it's properly escaped in your actual .env)
++FIREBASE_CONFIG=
++
++# Grafana Monitoring
++GF_SECURITY_ADMIN_PASSWORD=admin
+diff --git a/.github/workflows/deploy.yml b/.github/workflows/deploy.yml
+new file mode 100644
+index 0000000..b760985
+--- /dev/null
++++ b/.github/workflows/deploy.yml
+@@ -0,0 +1,41 @@
++name: Deploy
++
++on:
++  push:
++    branches:
++      - main
++
++concurrency:
++  group: deploy-${{ github.ref }}
++  cancel-in-progress: true
++
++jobs:
++  deploy:
++    runs-on: self-hosted
++    steps:
++      - name: Checkout code
++        uses: actions/checkout@v4
++
++      - name: Inject environment secrets
++        run: cp ~/tbd-bot-secrets/.env .env
++
++      - name: Deploy container stack
++        run: docker-compose up -d --build
++
++      - name: Post-deployment health check
++        run: |
++          echo "Waiting for container to become healthy..."
++          timeout=60
++          elapsed=0
++          until [ "$elapsed" -ge "$timeout" ]; do
++            status=$(docker inspect --format='{{json .State.Health.Status}}' tbd-bot 2>/dev/null || echo '"unknown"')
++            if [ "$status" = '"healthy"' ]; then
++              echo "Container tbd-bot is healthy!"
++              exit 0
++            fi
++            echo "Container status is $status, waiting..."
++            sleep 5
++            elapsed=$((elapsed + 5))
++          done
++          echo "Health check timed out after ${timeout}s!"
++          exit 1
+diff --git a/.github/workflows/master_tbdbot-cicd.yml b/.github/workflows/master_tbdbot-cicd.yml
+deleted file mode 100644
+index 2939565..0000000
+--- a/.github/workflows/master_tbdbot-cicd.yml
++++ /dev/null
+@@ -1,51 +0,0 @@
+-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+-# More GitHub Actions for Azure: https://github.com/Azure/actions
+-
+-name: Build and deploy container app to Azure Web App - tbdbot-cicd
+-
+-on:
+-  push:
+-    branches:
+-      - master
+-  workflow_dispatch:
+-
+-jobs:
+-  build:
+-    runs-on: 'ubuntu-latest'
+-
+-    steps:
+-    - uses: actions/checkout@v2
+-
+-    - name: Set up Docker Buildx
+-      uses: docker/setup-buildx-action@v2
+-
+-    - name: Log in to registry
+-      uses: docker/login-action@v2
+-      with:
+-        registry: https://tbdbotregistry.azurecr.io/
+-        username: ${{ secrets.AzureAppService_ContainerUsername_c002e078479e424799782ce3ced8f2c5 }}
+-        password: ${{ secrets.AzureAppService_ContainerPassword_1359188a2b8c44c5a48a03194a17ecd2 }}
+-
+-    - name: Build and push container image to registry
+-      uses: docker/build-push-action@v3
+-      with:
+-        push: true
+-        tags: tbdbotregistry.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_c002e078479e424799782ce3ced8f2c5 }}/tbdbot:${{ github.sha }}
+-        file: ./Dockerfile
+-
+-  deploy:
+-    runs-on: ubuntu-latest
+-    needs: build
+-    environment:
+-      name: 'production'
+-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+-
+-    steps:
+-    - name: Deploy to Azure Web App
+-      id: deploy-to-webapp
+-      uses: azure/webapps-deploy@v2
+-      with:
+-        app-name: 'tbdbot-cicd'
+-        slot-name: 'production'
+-        publish-profile: ${{ secrets.AzureAppService_PublishProfile_c4ee803c0cf846fba01cc8f693c34c78 }}
+-        images: 'tbdbotregistry.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_c002e078479e424799782ce3ced8f2c5 }}/tbdbot:${{ github.sha }}'
+\ No newline at end of file
+diff --git a/CLAUDE.md b/CLAUDE.md
+new file mode 100644
+index 0000000..3c6b844
+--- /dev/null
++++ b/CLAUDE.md
+@@ -0,0 +1,3 @@
++<!-- galdr:start -->
++<galdr-config path="docs/agents/galdr.md" />
++<!-- galdr:end -->
+diff --git a/Dockerfile b/Dockerfile
+index 515e491..8b394d9 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,8 +1,39 @@
+-FROM golang:1.19
++# Build Stage
++FROM golang:1.22-alpine AS builder
++
++# Install git for downloading dependencies
++RUN apk add --no-cache git
+ 
+ WORKDIR /app
+-COPY . .
++
++# Copy module files first for better caching
++COPY go.mod go.sum ./
+ RUN go mod download
+-RUN go build -o tbd-bot .
++
++# Copy the rest of the source code
++COPY . .
++
++# Build the Go binary statically
++RUN CGO_ENABLED=0 GOOS=linux go build -o tbd-bot .
++
++# Final Stage (Tiny and Secure)
++FROM alpine:latest
++
++WORKDIR /root/
++
++# Install ca-certificates so the bot can make HTTPS/WebSocket calls to Discord
++# tzdata is useful for timezone-aware cron jobs
++RUN apk --no-cache add ca-certificates tzdata
++
++# Copy the compiled binary from the builder stage
++COPY --from=builder /app/tbd-bot .
++
++# The bot health check port
+ EXPOSE 8080
++
++# Native Docker HEALTHCHECK using wget against the /metrics endpoint
++HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
++  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/metrics || exit 1
++
+ CMD ["./tbd-bot"]
++
+diff --git a/README.md b/README.md
+index 47a201d..a9b0866 100644
+--- a/README.md
++++ b/README.md
+@@ -12,7 +12,18 @@ Because I couldn't think of a name at time of writing the code.
+   - Friday abstinence memes
+ - Q&A
+   - #religious-questions, #religious-discussions, #religious-discussions-2, and #answered-questions system where, as the name implies, answered questions will be moved to #answered-questions so that unanswered questions can have more exposure.
+-- and other fun stuffs 
++## Monitoring & Grafana Access
++Grafana is exposed locally on port `3000` (bound to `127.0.0.1:3000` for security):
++- Local URL: `http://127.0.0.1:3000` (or `http://<mac-mini-ip>:3000` within local network)
++- Credentials: Default `admin` / `admin` (change upon first login or set via `.env`)
++- Pre-configured Grafana dashboard auto-loaded from `grafana/provisioning/dashboards/bot-dashboard.json`.
++
++## Self-Hosted Runner Security
++To protect the local host environment and self-hosted runner from arbitrary code execution via external Fork Pull Requests:
++1. Open your repository on GitHub.
++2. Navigate to **Settings** -> **Actions** -> **General**.
++3. Under **Fork pull request workflows from outside collaborators**, choose **Require approval for all outside collaborators** (or disable fork PR execution on self-hosted runners).
++4. Ensure workflow jobs targeting `runs-on: self-hosted` are tied strictly to the `main` branch.
+ 
+ ## [![Repography logo](https://images.repography.com/logo.svg)](https://repography.com) / Recent activity [![Time period](https://images.repography.com/26965455/christiansoetanto/tbd-bot/recent-activity/XSKu8NuvUO-wMkvxmAk0-Sh04dEgjpwow1r37BcSWVk/ZHy8hl1p33C5CZb9geQ1DTotvDo6YiFPQ9owxkhS1qU_badge.svg)](https://repography.com)
+ [![Timeline graph](https://images.repography.com/26965455/christiansoetanto/tbd-bot/recent-activity/XSKu8NuvUO-wMkvxmAk0-Sh04dEgjpwow1r37BcSWVk/ZHy8hl1p33C5CZb9geQ1DTotvDo6YiFPQ9owxkhS1qU_timeline.svg)](https://github.com/christiansoetanto/tbd-bot/commits)
+diff --git a/dbot/calendar_cron.go b/dbot/calendar_cron.go
+index f752e4f..2fbc181 100644
+--- a/dbot/calendar_cron.go
++++ b/dbot/calendar_cron.go
+@@ -11,6 +11,7 @@ import (
+ 
+ func (u *usecase) liturgicalCalendarCronJob(ctx context.Context) func() {
+ 	return func() {
++		util.IncCronExecutions("calendar")
+ 		embed, isMentionLatinCath, err := util.GenerateCalendarEmbed()
+ 		if err != nil {
+ 			logv2.Error(ctx, err)
+diff --git a/dbot/friday_cron.go b/dbot/friday_cron.go
+index f718c08..28ecc32 100644
+--- a/dbot/friday_cron.go
++++ b/dbot/friday_cron.go
+@@ -9,6 +9,7 @@ import (
+ 
+ func (u *usecase) fridayCronJob(ctx context.Context) func() {
+ 	return func() {
++		util.IncCronExecutions("friday")
+ 		c := util.RandomSDFridayMemeImage()
+ 		for _, config := range u.Config.GuildConfig {
+ 			if config.RegisteredFeature[domain.FeatureKeyFridayCron] {
+diff --git a/dbot/handler/cm_command.go b/dbot/handler/cm_command.go
+index f7ca2aa..a0a87f5 100644
+--- a/dbot/handler/cm_command.go
++++ b/dbot/handler/cm_command.go
+@@ -112,6 +112,7 @@ func (h *handler) cmVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
+ 			reportInteractionError(ctx, s, i.Interaction, err)
+ 			return err
+ 		}
++		util.IncCMActions("verify")
+ 		logv2.Debug(ctx, logv2.Info, logv2.Finish)
+ 		return nil
+ 	}
+@@ -300,6 +301,7 @@ func (h *handler) cmQuestionOneCommandHandlerFunc(ctx context.Context) func(s *d
+ 			return err
+ 		}
+ 
++		util.IncCMActions("question_one")
+ 		logv2.Debug(ctx, logv2.Info, logv2.Finish)
+ 		return nil
+ 	}
+diff --git a/dbot/handler/command.go b/dbot/handler/command.go
+index 840b7fb..28c1ecf 100644
+--- a/dbot/handler/command.go
++++ b/dbot/handler/command.go
+@@ -3,10 +3,12 @@ package handler
+ import (
+ 	"context"
+ 	"fmt"
++	"time"
++
+ 	"github.com/bwmarrin/discordgo"
+ 	"github.com/christiansoetanto/tbd-bot/domain"
+ 	"github.com/christiansoetanto/tbd-bot/logv2"
+-	"time"
++	"github.com/christiansoetanto/tbd-bot/util"
+ )
+ 
+ type commandHandler map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate) error
+@@ -14,21 +16,21 @@ type componentHandler map[string]func(s *discordgo.Session, i *discordgo.Interac
+ 
+ func (h *handler) GetCommandHandlers(ctx context.Context) ([]*discordgo.ApplicationCommand, commandHandler) {
+ 	commandHandlers := commandHandler{
+-		domain.FeatureKeyPing:                 h.pingCommandHandlerFunc(ctx),
+-		domain.FeatureKeySDVerify:             h.sdVerifyCommandHandlerFunc(ctx),
+-		domain.FeatureKeySDQuestionOne:        h.sdQuestionOneCommandHandlerFunc(ctx),
+-		domain.FeatureKeySDVettingQuestioning: h.sdVettingQuestioningCommandHandlerFunc(ctx),
+-		domain.FeatureKeySDDetain:             h.sdDetainCommandHandlerFunc(ctx),
+-		domain.FeatureKeySDOfficeOfReadings:   h.sdOfficeOfReadingsCommandHandlerFunc(ctx),
+-		domain.FeatureKeySDCalendar:           h.sdCalendarCommandHandlerFunc(ctx),
+-		domain.FeatureKeyCMQuestionOne:        h.cmQuestionOneCommandHandlerFunc(ctx),
+-		domain.FeatureKeyCMVerify:             h.cmVerifyCommandHandlerFunc(ctx),
+-		domain.FeatureKeyCMPoll:               h.cmPollCommandHandlerFunc(ctx),
+-		domain.FeatureKeyTSVerify:             h.tsVerifyCommandHandlerFunc(ctx),
+-		domain.FeatureKeyTSQuestionOne:        h.tsQuestionOneCommandHandlerFunc(ctx),
+-		domain.FeatureKeyTSDetain:             h.tsDetainCommandHandlerFunc(ctx),
+-		domain.FeatureKeyTSOfficeOfReadings:   h.tsOfficeOfReadingsCommandHandlerFunc(ctx),
+-		domain.FeatureKeyTSCalendar:           h.tsCalendarCommandHandlerFunc(ctx),
++		domain.FeatureKeyPing:                 util.DecorateInteractionHandler(domain.FeatureKeyPing, h.pingCommandHandlerFunc(ctx)),
++		domain.FeatureKeySDVerify:             util.DecorateInteractionHandler(domain.FeatureKeySDVerify, h.sdVerifyCommandHandlerFunc(ctx)),
++		domain.FeatureKeySDQuestionOne:        util.DecorateInteractionHandler(domain.FeatureKeySDQuestionOne, h.sdQuestionOneCommandHandlerFunc(ctx)),
++		domain.FeatureKeySDVettingQuestioning: util.DecorateInteractionHandler(domain.FeatureKeySDVettingQuestioning, h.sdVettingQuestioningCommandHandlerFunc(ctx)),
++		domain.FeatureKeySDDetain:             util.DecorateInteractionHandler(domain.FeatureKeySDDetain, h.sdDetainCommandHandlerFunc(ctx)),
++		domain.FeatureKeySDOfficeOfReadings:   util.DecorateInteractionHandler(domain.FeatureKeySDOfficeOfReadings, h.sdOfficeOfReadingsCommandHandlerFunc(ctx)),
++		domain.FeatureKeySDCalendar:           util.DecorateInteractionHandler(domain.FeatureKeySDCalendar, h.sdCalendarCommandHandlerFunc(ctx)),
++		domain.FeatureKeyCMQuestionOne:        util.DecorateInteractionHandler(domain.FeatureKeyCMQuestionOne, h.cmQuestionOneCommandHandlerFunc(ctx)),
++		domain.FeatureKeyCMVerify:             util.DecorateInteractionHandler(domain.FeatureKeyCMVerify, h.cmVerifyCommandHandlerFunc(ctx)),
++		domain.FeatureKeyCMPoll:               util.DecorateInteractionHandler(domain.FeatureKeyCMPoll, h.cmPollCommandHandlerFunc(ctx)),
++		domain.FeatureKeyTSVerify:             util.DecorateInteractionHandler(domain.FeatureKeyTSVerify, h.tsVerifyCommandHandlerFunc(ctx)),
++		domain.FeatureKeyTSQuestionOne:        util.DecorateInteractionHandler(domain.FeatureKeyTSQuestionOne, h.tsQuestionOneCommandHandlerFunc(ctx)),
++		domain.FeatureKeyTSDetain:             util.DecorateInteractionHandler(domain.FeatureKeyTSDetain, h.tsDetainCommandHandlerFunc(ctx)),
++		domain.FeatureKeyTSOfficeOfReadings:   util.DecorateInteractionHandler(domain.FeatureKeyTSOfficeOfReadings, h.tsOfficeOfReadingsCommandHandlerFunc(ctx)),
++		domain.FeatureKeyTSCalendar:           util.DecorateInteractionHandler(domain.FeatureKeyTSCalendar, h.tsCalendarCommandHandlerFunc(ctx)),
+ 	}
+ 	applicationCommands := []*discordgo.ApplicationCommand{
+ 		{
+@@ -332,8 +334,8 @@ func (h *handler) buildComponentHandler(ctx context.Context) func(s *discordgo.S
+ 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) {
+ 		if i.Type == discordgo.InteractionMessageComponent {
+ 			handlers := componentHandler{
+-				domain.ComponentKeyCMVote:       h.cmPollVoteHandlerFunc(ctx),
+-				domain.ComponentKeyCMShowVoters: h.cmPollShowVotersHandlerFunc(ctx),
++				domain.ComponentKeyCMVote:       util.DecorateInteractionHandler(domain.ComponentKeyCMVote, h.cmPollVoteHandlerFunc(ctx)),
++				domain.ComponentKeyCMShowVoters: util.DecorateInteractionHandler(domain.ComponentKeyCMShowVoters, h.cmPollShowVotersHandlerFunc(ctx)),
+ 			}
+ 			if h, ok := handlers[i.MessageComponentData().CustomID]; ok {
+ 				err := h(s, i)
+diff --git a/dbot/handler/component.go b/dbot/handler/component.go
+index 37fd0ee..7910f6c 100644
+--- a/dbot/handler/component.go
++++ b/dbot/handler/component.go
+@@ -26,6 +26,7 @@ func (h *handler) cmPollVoteHandlerFunc(ctx context.Context) func(s *discordgo.S
+ 			logv2.Error(ctx, err, i.Interaction.MessageComponentData())
+ 			return err
+ 		}
++		util.IncComponentInteractions("cm_poll_vote")
+ 		newAnswer := voteValue[0]
+ 		poll, err := h.Provider.GetPoll(ctx, pollId)
+ 		if err != nil {
+@@ -117,6 +118,7 @@ func (h *handler) cmPollShowVotersHandlerFunc(ctx context.Context) func(s *disco
+ 	ctx = logv2.InitRequestContext(ctx)
+ 	ctx = logv2.InitFuncContext(ctx)
+ 	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
++		util.IncComponentInteractions("cm_poll_show_voters")
+ 		pollId := i.Message.ID
+ 		userId := i.Interaction.Member.User.ID
+ 		guildId := i.GuildID
+diff --git a/dbot/handler/handler.go b/dbot/handler/handler.go
+index dc40942..e90e19b 100644
+--- a/dbot/handler/handler.go
++++ b/dbot/handler/handler.go
+@@ -2,10 +2,12 @@ package handler
+ 
+ import (
+ 	"context"
++	"sync"
++
+ 	"github.com/bwmarrin/discordgo"
+ 	"github.com/christiansoetanto/tbd-bot/config"
+ 	"github.com/christiansoetanto/tbd-bot/provider"
+-	"sync"
++	"github.com/christiansoetanto/tbd-bot/util"
+ )
+ 
+ type handler struct {
+@@ -39,13 +41,13 @@ func GetHandler(resource *Resource) Handler {
+ 
+ func (h *handler) GetHandlers(ctx context.Context) []interface{} {
+ 	return []interface{}{
+-		h.readyHandler(ctx),
+-		h.guildCreateHandler(ctx),
+-		h.vettingQuestioningKeywordDetectionHandler(ctx),
+-		h.buildCommandHandler(ctx),
+-		h.buildComponentHandler(ctx),
+-		h.questionMoverMessageReactionAddHandler(ctx),
+-		h.cmQuestionLimiterHandler(ctx),
+-		h.invalidVettingResponseHandler(ctx),
++		util.DecorateEventHandler("ready", h.readyHandler(ctx)),
++		util.DecorateEventHandler("guild_create", h.guildCreateHandler(ctx)),
++		util.DecorateEventHandler("vetting_questioning_keyword", h.vettingQuestioningKeywordDetectionHandler(ctx)),
++		util.DecorateEventHandler("build_command", h.buildCommandHandler(ctx)),
++		util.DecorateEventHandler("build_component", h.buildComponentHandler(ctx)),
++		util.DecorateEventHandler("question_mover_reaction_add", h.questionMoverMessageReactionAddHandler(ctx)),
++		util.DecorateEventHandler("cm_question_limiter", h.cmQuestionLimiterHandler(ctx)),
++		util.DecorateEventHandler("invalid_vetting_response", h.invalidVettingResponseHandler(ctx)),
+ 	}
+ }
+diff --git a/dbot/handler/message.go b/dbot/handler/message.go
+index ebb01c3..a6003e4 100644
+--- a/dbot/handler/message.go
++++ b/dbot/handler/message.go
+@@ -29,6 +29,7 @@ func (h *handler) vettingQuestioningKeywordDetectionHandler(ctx context.Context)
+ 			channelId != m.ChannelID {
+ 			return
+ 		}
++		util.IncMessagesProcessed("vetting_questioning_keyword")
+ 		keyword := setting.Keyword
+ 		if strings.Contains(util.ToAlphanumAndSpace(m.Content), keyword) {
+ 			title := setting.Title
+@@ -105,6 +106,7 @@ func (h *handler) invalidVettingResponseHandler(ctx context.Context) func(s *dis
+ 			channelId != m.ChannelID {
+ 			return
+ 		}
++		util.IncMessagesProcessed("invalid_vetting_response")
+ 
+ 		if !isValidVettingResponse(ctx, m.Content, setting) {
+ 			content := fmt.Sprintf("Hey <@%s>! It looks like you missed question 1. Please re-read the <#%s> again, we assure you that the code is in there. Thank you for your understanding.", m.Author.ID, cfg.Channel.RulesVetting)
+@@ -135,6 +137,7 @@ func (h *handler) cmQuestionLimiterHandler(ctx context.Context) func(s *discordg
+ 			channelId != m.ChannelID {
+ 			return
+ 		}
++		util.IncMessagesProcessed("cm_question_limiter")
+ 		if setting.UnlimitedRoleIds == nil {
+ 			logv2.Error(ctx, fmt.Errorf("unlimited role ids is nil"))
+ 			return
+diff --git a/dbot/handler/reaction_add.go b/dbot/handler/reaction_add.go
+index 2c36b33..b2706b0 100644
+--- a/dbot/handler/reaction_add.go
++++ b/dbot/handler/reaction_add.go
+@@ -172,5 +172,6 @@ func archiveQuestion(ctx context.Context, s *discordgo.Session, answers answersM
+ 		return err
+ 	}
+ 
++	util.IncQAMoves()
+ 	return nil
+ }
+diff --git a/dbot/handler/sd_command.go b/dbot/handler/sd_command.go
+index 07db975..ffc8c92 100644
+--- a/dbot/handler/sd_command.go
++++ b/dbot/handler/sd_command.go
+@@ -124,6 +124,7 @@ func (h *handler) sdVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
+ 			reportInteractionError(ctx, s, i.Interaction, err)
+ 			return err
+ 		}
++		util.IncUsersVetted()
+ 		logv2.Debug(ctx, logv2.Info, logv2.Finish)
+ 		return nil
+ 	}
+diff --git a/dbot/handler/ts_command.go b/dbot/handler/ts_command.go
+index 3217924..f05c47a 100644
+--- a/dbot/handler/ts_command.go
++++ b/dbot/handler/ts_command.go
+@@ -124,6 +124,7 @@ func (h *handler) tsVerifyCommandHandlerFunc(ctx context.Context) func(s *discor
+ 			reportInteractionError(ctx, s, i.Interaction, err)
+ 			return err
+ 		}
++		util.IncTSUsersVetted()
+ 		logv2.Debug(ctx, logv2.Info, logv2.Finish)
+ 		return nil
+ 	}
+diff --git a/dbot/init.go b/dbot/init.go
+index b085cd7..20e4392 100644
+--- a/dbot/init.go
++++ b/dbot/init.go
+@@ -8,6 +8,7 @@ import (
+ 	"github.com/christiansoetanto/tbd-bot/config"
+ 	"github.com/christiansoetanto/tbd-bot/dbot/handler"
+ 	"github.com/christiansoetanto/tbd-bot/logv2"
++	"github.com/christiansoetanto/tbd-bot/util"
+ 	"github.com/robfig/cron/v3"
+ 	"sync"
+ )
+@@ -46,6 +47,7 @@ func GetUsecaseObject(resource *Resource) Usecase {
+ }
+ 
+ func (u *usecase) Init(ctx context.Context) error {
++	util.InitMetrics()
+ 	//handlers => open conn => cron jobs
+ 	u.initHandlers(ctx)
+ 
+diff --git a/dbot/office_of_readings_cron.go b/dbot/office_of_readings_cron.go
+index 15b1359..96c18b7 100644
+--- a/dbot/office_of_readings_cron.go
++++ b/dbot/office_of_readings_cron.go
+@@ -21,6 +21,7 @@ import (
+ 
+ func (u *usecase) officeOfReadingsCronJob(ctx context.Context) func() {
+ 	return func() {
++		util.IncCronExecutions("office_of_readings")
+ 		embed, err := util.GenerateOfficeOfReadingsEmbeds()
+ 		if err != nil {
+ 			return
+@@ -38,6 +39,7 @@ func (u *usecase) officeOfReadingsCronJob(ctx context.Context) func() {
+ 
+ func (u *usecase) officeOfReadingsCronJob2(ctx context.Context) func() {
+ 	return func() {
++		util.IncCronExecutions("office_of_readings_2")
+ 		ctx = logv2.InitRequestContext(ctx)
+ 		ctx = logv2.InitFuncContext(ctx)
+ 		logv2.Debug(ctx, logv2.Info, "Starting office of readings cron job")
+diff --git a/docker-compose.yml b/docker-compose.yml
+new file mode 100644
+index 0000000..07eda7a
+--- /dev/null
++++ b/docker-compose.yml
+@@ -0,0 +1,63 @@
++version: '3.8'
++
++services:
++  tbd-bot:
++    build:
++      context: .
++      dockerfile: Dockerfile
++    container_name: tbd-bot
++    restart: unless-stopped
++    env_file:
++      - .env
++    environment:
++      - GOMEMLIMIT=200MiB
++      - PORT=8080
++    ports:
++      - "8080:8080"
++    mem_limit: 256m
++    deploy:
++      resources:
++        limits:
++          memory: 256M
++
++  prometheus:
++    image: prom/prometheus:latest
++    container_name: prometheus
++    restart: unless-stopped
++    command:
++      - '--config.file=/etc/prometheus/prometheus.yml'
++      - '--storage.tsdb.path=/prometheus'
++      - '--storage.tsdb.retention.time=14d'
++      - '--storage.tsdb.retention.size=1GB'
++    volumes:
++      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
++      - prometheus_data:/prometheus
++    ports:
++      - "127.0.0.1:9090:9090"
++    mem_limit: 256m
++    deploy:
++      resources:
++        limits:
++          memory: 256M
++
++  grafana:
++    image: grafana/grafana:latest
++    container_name: grafana
++    restart: unless-stopped
++    ports:
++      - "127.0.0.1:3000:3000"
++    volumes:
++      - grafana_data:/var/lib/grafana
++      - ./grafana/provisioning:/etc/grafana/provisioning:ro
++    environment:
++      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin}
++      - GF_USERS_ALLOW_SIGN_UP=false
++    mem_limit: 256m
++    deploy:
++      resources:
++        limits:
++          memory: 256M
++
++volumes:
++  prometheus_data:
++  grafana_data:
+diff --git a/docs/agents/galdr.md b/docs/agents/galdr.md
+new file mode 100644
+index 0000000..c25b24d
+--- /dev/null
++++ b/docs/agents/galdr.md
+@@ -0,0 +1,35 @@
++## Gates
++
++### Task
++- `gofmt -l .`
++- `go vet ./...`
++- `go test ./...`
++
++### Gate
++- `gofmt -l .`
++- `go vet ./...`
++- `go test ./...`
++
++## Invariants
++
++## Fast path
++
++## Review sources
++- README.md
++- docs/agents/roles-and-journeys.md
++
++## Models
++- mechanical: claude-haiku-4-5
++- standard: claude-sonnet-5
++- top: session model
++
++## Worktree notes
++- Run `go mod download` after worktree creation.
++
++## Smoke
++- launch command: `go run main.go`
++- base URL: N/A (Discord bot service)
++- output dir: `docs/smoke/`
++
++## Briefs
++- dispatch briefs under `docs/briefs/` are gitignored
+diff --git a/docs/agents/roles-and-journeys.md b/docs/agents/roles-and-journeys.md
+new file mode 100644
+index 0000000..295201e
+--- /dev/null
++++ b/docs/agents/roles-and-journeys.md
+@@ -0,0 +1,20 @@
++## Unverified Server Member
++
++**Identity:** A Discord user joining the server who has not yet undergone religious vetting. [domain/domain.go:34-44](file:///Users/chris/repos/christiansoetanto/tbd-bot/domain/domain.go#L34-L44)
++**Capabilities:** Can trigger vetting verification and answer vetting questions using `/sdverify`. [domain/domain.go:9](file:///Users/chris/repos/christiansoetanto/tbd-bot/domain/domain.go#L9)
++**Lifecycle states touched:** Unverified -> Questioning -> Verified. [domain/domain.go:9-11](file:///Users/chris/repos/christiansoetanto/tbd-bot/domain/domain.go#L9-L11)
++**Journey:** Joins server, executes `/sdverify` command, submits answers for secret code detector/vetting, receives assigned religion role. [README.md:5-8](file:///Users/chris/repos/christiansoetanto/tbd-bot/README.md#L5-L8)
++**Boundaries:** Cannot post in restricted channels prior to role assignment. [README.md:6](file:///Users/chris/repos/christiansoetanto/tbd-bot/README.md#L6)
++**Status:** Built [domain/domain.go:9-11](file:///Users/chris/repos/christiansoetanto/tbd-bot/domain/domain.go#L9-L11)
++
++## Verified Server Member
++
++**Identity:** A server member who has been assigned a religion role. [domain/domain.go:36-44](file:///Users/chris/repos/christiansoetanto/tbd-bot/domain/domain.go#L36-L44)
++**Capabilities:** Can post Q&A questions, vote in polls, view Office of Readings and daily liturgical celebrations. [README.md:9-15](file:///Users/chris/repos/christiansoetanto/tbd-bot/README.md#L9-L15)
++**Lifecycle states touched:** Verified. [domain/domain.go:34-44](file:///Users/chris/repos/christiansoetanto/tbd-bot/domain/domain.go#L34-L44)
++**Journey:** Participates in Q&A discussions, views automated daily Catholic updates, interacts with bot poll components. [README.md:9-15](file:///Users/chris/repos/christiansoetanto/tbd-bot/README.md#L9-L15)
++**Boundaries:** Subject to secret code vetting and detainment rules. [domain/domain.go:12](file:///Users/chris/repos/christiansoetanto/tbd-bot/domain/domain.go#L12)
++**Status:** Built [domain/domain.go:34-44](file:///Users/chris/repos/christiansoetanto/tbd-bot/domain/domain.go#L34-L44)
++
++## Changelog
++- 2026-07-22 — doc-wide — initial setup draft
+diff --git a/docs/mac-mini-setup.md b/docs/mac-mini-setup.md
+new file mode 100644
+index 0000000..613519f
+--- /dev/null
++++ b/docs/mac-mini-setup.md
+@@ -0,0 +1,68 @@
++# Mac Mini Self-Hosted Runner Setup Guide
++
++Before merging the migration branch (`feature/mac-mini-migration`) into `main`, you **must** perform these manual setup steps on the Mac Mini. If you fail to do this, the GitHub Action will hang indefinitely waiting for a runner that does not exist, and the deployment will fail due to missing secrets.
++
++## 1. Register the Mac Mini Runner
++You must connect your Mac Mini to GitHub so it can listen for deployment webhooks.
++
++1. Go to your GitHub repository in your web browser.
++2. Navigate to **Settings -> Actions -> Runners**.
++3. Click the green **New self-hosted runner** button.
++4. Select **macOS** as the operating system and **ARM64** as the architecture (for M4).
++5. Open the Terminal on your Mac Mini and run the commands exactly as GitHub provides them in the UI. They will look something like this:
++   ```bash
++   mkdir actions-runner && cd actions-runner
++   curl -o actions-runner-osx-arm64-2.x.x.tar.gz -L https://github.com/actions/runner/releases/download/...
++   tar xzf ./actions-runner-osx-arm64-2.x.x.tar.gz
++   ./config.sh --url https://github.com/christiansoetanto/tbd-bot --token <YOUR_TOKEN>
++   ```
++
++## 2. Install the Runner as a Background Service
++By default, if you just run `./run.sh`, the runner will die the moment you close the Terminal or restart the Mac Mini. We must install it as a persistent daemon.
++
++While still inside the `actions-runner` directory on your Mac Mini, run:
++```bash
++sudo ./svc.sh install
++sudo ./svc.sh start
++```
++The runner is now permanently listening in the background.
++
++## 3. Create the Secrets File
++To protect your Discord token from malicious pull requests, the `.env` file is intentionally excluded from the Git repository and the GitHub Actions workspace. The CI pipeline is hardcoded to copy the `.env` file from a secure, external directory on your Mac Mini (`~/tbd-bot-secrets/.env`).
++
++1. Create the secure folder in your Mac Mini's home directory:
++   ```bash
++   mkdir -p ~/tbd-bot-secrets
++   ```
++2. Create and open the `.env` file:
++   ```bash
++   nano ~/tbd-bot-secrets/.env
++   ```
++3. Paste in your environment variables. It **must** contain these at minimum:
++   ```env
++   BOTTOKEN=your_actual_discord_bot_token
++   GOMEMLIMIT=200MiB
++   GF_SECURITY_ADMIN_PASSWORD=your_secure_grafana_password
++   ```
++4. Save and exit (`CTRL+O`, `Enter`, `CTRL+X`).
++
++## 4. Lock Down Security (CRITICAL)
++Running a self-hosted runner on your personal hardware gives GitHub Actions root-equivalent execution context on your Mac. If a stranger opens a malicious Pull Request, it could theoretically execute arbitrary code on your home network.
++
++1. Go to your repository **Settings -> Actions -> General**.
++2. Scroll down to **Fork pull request workflows from outside collaborators**.
++3. Select **Require approval for all outside collaborators** (or disable it entirely).
++4. Click Save.
++
++## 5. Prevent macOS Sleep (Optional but Recommended)
++The M4 Mac Mini is aggressive about power saving. If the Mac goes to sleep, Docker suspends, and the bot disconnects from Discord.
++
++To prevent the Mac Mini from ever sleeping when plugged into the wall, run:
++```bash
++sudo pmset -c sleep 0 displaysleep 0 disksleep 0
++```
++
++---
++
++### You are now ready to deploy!
++You may now approve and merge the `feature/mac-mini-migration` branch into `main`. The Mac Mini will automatically detect the push, inject the secrets, build the Docker images, and launch the bot and monitoring stack.
+diff --git a/docs/plans/2026-07-22-vps-migration.md b/docs/plans/2026-07-22-vps-migration.md
+new file mode 100644
+index 0000000..0d7dc3e
+--- /dev/null
++++ b/docs/plans/2026-07-22-vps-migration.md
+@@ -0,0 +1,154 @@
++# Plan: Heroku to Mac Mini Migration
++
++## Goal
++Migrate the `tbd-bot` deployment architecture from Heroku to an M4 Mac Mini home server. This involves optimizing the Docker container, establishing deep application metrics (Prometheus/Grafana), and setting up automated CI/CD via a local GitHub Runner.
++
++## Architecture
++- **Metrics:** `prometheus/client_golang` integrated into the existing port 8080 HTTP server. Includes business logic counters and RED decorators for Discord events.
++- **Docker Compose:** Standard orchestrator (`docker-compose.yml`) mapping to a `.env` file for secrets. Runs the bot (with `GOMEMLIMIT` and memory limits), Prometheus (14d/1GB limits), and Grafana (IaC Provisioning on `127.0.0.1:3000`).
++- **CI/CD:** GitHub Actions targeting a `self-hosted` runner running on the Mac Mini. Includes concurrency control, secure `.env` injection, and true Docker health-check polling.
++
++## Global Constraints
++- The Mac Mini must maintain persistent internet access for the Discord WebSocket session.
++- Secrets (`BOTTOKEN`, etc.) must be stored securely in a local `.env` file on the Mac Mini, and securely injected into the GitHub Actions workspace.
++- Deployments must be automated via GitHub Actions. **Self-hosted runner security must be enforced** by strictly tying workflows to the `main` branch and disabling workflows from fork Pull Requests via GitHub Repository Settings.
++- The system and application timezone must remain in UTC.
++- The bot must avoid Discord Gateway bans by implementing a graceful `SIGTERM` shutdown that calls `discordgo.Session.Close()`.
++
++## Progress
++
++| Task | Wave | Status | Evidence |
++|------|------|--------|----------|
++| 1.1  | 1    | completed | `TestMetricsEndpoint` passed in `main_test.go` |
++| 1.2  | 1    | completed | `TestBusinessMetricsRegistered` and `TestMetricsEndpoint` passed |
++| 1.3  | 1    | completed | `TestREDMetricsDecorators` and `TestAllExpandedBusinessMetrics` passed in `util/metrics_test.go` |
++| 1.4  | 1    | completed | `TestGracefulShutdown_SIGINT` and `TestGracefulShutdown_SIGTERM` passed in `main_test.go` |
++| 2.1  | 2    | completed | `TestDockerfile_MultiStageAndHealthcheck` passed & `scripts/verify_dockerfile.sh` verified static rules + Go static build |
++| 2.2  | 2    | completed | `TestDockerComposeAndMonitoringSetup` passed in `main_test.go` & valid `docker-compose.yml`, `prometheus/`, `grafana/` configs created |
++| 2.3  | 2    | completed | `TestDocumentation_GrafanaAndRunnerSecurity` passed in `main_test.go` & `README.md` updated |
++| 2.4  | 2    | completed | `TestGrafanaDashboardJSON` passed in `main_test.go` & valid JSON at `grafana/provisioning/dashboards/bot-dashboard.json` |
++| 3.1  | 3    | completed | Verified `deploy.yml` with `actionlint` and `TestDeployWorkflow` in `main_test.go` |
++
++## Diagram
++
++```mermaid
++flowchart TD
++  subgraph Wave 1
++    1.1["1.1: Prometheus HTTP Handler"]
++    1.2["1.2: Business Metrics Counters"]
++    1.3["1.3: RED Metrics Decorators"]
++    1.4["1.4: Graceful Shutdown"]
++  end
++  subgraph Wave 2
++    2.1["2.1: Multi-stage Dockerfile"]
++    2.2["2.2: Docker Compose & Monitoring Setup"]
++    2.3["2.3: Documentation"]
++    2.4["2.4: Baseline Dashboard JSON"]
++  end
++  subgraph Wave 3
++    3.1["3.1: Self-Hosted Runner Deploy Action"]
++  end
++  1.1 --> 1.2
++  1.1 --> 1.3
++  1.1 --> 2.1
++  1.2 --> 2.2
++  1.3 --> 2.2
++  1.4 --> 2.1
++  2.1 --> 2.2
++  2.2 --> 2.3
++  2.2 --> 2.4
++  2.3 --> 3.1
++  2.4 --> 3.1
++```
++
++## Wave 1
++
++### Task 1.1: Prometheus HTTP Handler
++**Files:** Modify `main.go`, `go.mod`, `go.sum`
++**Write-scope:** `main.go`, `go.mod`, `go.sum`
++**Consumes:** Existing port 8080 HTTP server setup
++**Produces:** A `/metrics` endpoint serving default Go metrics using `github.com/prometheus/client_golang/prometheus/promhttp`.
++**Seams:** HTTP boundary.
++**Tests:** `go test` validating the metrics endpoint returns 200 MUST be written and fail first.
++**Model tier:** flash
++
++### Task 1.2: Business Metrics Counters
++**Files:** Create `util/metrics.go`, modify `dbot/handler/sd_command.go`, `dbot/handler/reaction_add.go`, `dbot/init.go`
++**Write-scope:** `util/metrics.go`, `dbot/handler/sd_command.go`, `dbot/handler/reaction_add.go`, `dbot/init.go`
++**Consumes:** Task 1.1 Prometheus framework
++**Produces:** Registered custom counters (`tbd_bot_qa_moves_total`, `tbd_bot_users_vetted_total`, etc.) that increment during their respective usecases.
++**Seams:** Internal Go package boundary.
++**Tests:** Verify counters increment logic via unit tests (MUST fail first).
++**Model tier:** flash
++
++### Task 1.3: RED Metrics Decorators
++**Files:** Modify `util/metrics.go`, `dbot/init.go`, `dbot/handler/*.go`
++**Write-scope:** `util/metrics.go`, `dbot/init.go`, `dbot/handler/`
++**Consumes:** Task 1.1 Prometheus framework
++**Produces:** Manual RED timers injected into handler registrations to track Latency (Histograms) and Success Rate/QPS (Counters) without slow reflection.
++**Seams:** Metric injection boundary.
++**Tests:** Unit test the decorators record metrics successfully (MUST fail first).
++**Model tier:** flash
++
++### Task 1.4: Graceful Shutdown
++**Files:** Modify `main.go`
++**Write-scope:** `main.go`
++**Consumes:** Discordgo session initialization.
++**Produces:** OS signal trapping for `SIGINT` and `SIGTERM` that explicitly calls `discordgo.Session.Close()` before exiting, preventing Gateway ban loops.
++**Seams:** OS process lifecycle.
++**Tests:** Trigger a manual SIGINT in tests and verify `Close()` is called (MUST fail first).
++**Model tier:** flash
++
++## Wave 2
++
++### Task 2.1: Multi-stage Dockerfile
++**Files:** Modify `Dockerfile`
++**Write-scope:** `Dockerfile`
++**Consumes:** Go source code from Wave 1
++**Produces:** A multi-stage Dockerfile compiling a static Go binary using `golang:1.22-alpine` with `CGO_ENABLED=0`. Includes a native Docker `HEALTHCHECK` using `wget` against `:8080/metrics`.
++**Seams:** Build boundary — must compile successfully.
++**Tests:** Docker build execution and running `docker inspect` to verify health check syntax.
++**Model tier:** flash
++
++### Task 2.2: Docker Compose & Monitoring Setup
++**Files:** Modify `docker-compose.yml`, create `prometheus/prometheus.yml`, `grafana/provisioning/datasources/datasource.yml`, `grafana/provisioning/dashboards/dashboard-provider.yml`, `.env.example`
++**Write-scope:** `docker-compose.yml`, `prometheus/`, `grafana/`, `.env.example`
++**Consumes:** Task 2.1 Image, Task 1.3 `/metrics` endpoint.
++**Produces:** Orchestrated stack for bot (with memory limits and `GOMEMLIMIT`), prometheus (with named volumes and 1GB/14d limits), and grafana (with named volumes, IaC provisioning, bound to `127.0.0.1:3000`).
++**Seams:** Orchestration boundary.
++**Tests:** Run `docker-compose config` to validate YAML before execution.
++**Model tier:** flash
++
++### Task 2.3: Documentation
++**Files:** Modify `README.md`
++**Write-scope:** `README.md`
++**Consumes:** Task 2.2 Architecture
++**Produces:** Clear instructions on how to access the Grafana dashboard locally on the Mac Mini network (`127.0.0.1`), and instructions to disable Fork PRs in GitHub repo settings.
++**Seams:** Documentation boundary.
++**Tests:** Manual proofread.
++**Model tier:** flash
++
++### Task 2.4: Baseline Dashboard JSON
++**Files:** Create `grafana/provisioning/dashboards/bot-dashboard.json`
++**Write-scope:** `grafana/provisioning/dashboards/bot-dashboard.json`
++**Consumes:** Task 2.2 Provisioning setup.
++**Produces:** A baseline JSON file that auto-loads in Grafana to visualize RED metrics.
++**Seams:** Dashboard JSON validation.
++**Tests:** Valid JSON syntax check.
++**Model tier:** flash
++
++## Wave 3
++
++### Task 3.1: Self-Hosted Runner Deploy Action
++**Files:** Modify `.github/workflows/deploy.yml`
++**Write-scope:** `.github/workflows/deploy.yml`
++**Consumes:** Docker Compose infrastructure from Task 2.2
++**Produces:** A GitHub Action YAML that triggers on push to `main` targeting a `self-hosted` runner, executing `docker-compose up -d --build`.
++**Seams:** Pipeline boundary.
++**Tests:** Run `actionlint .github/workflows/deploy.yml` locally to validate syntax (MUST pass validation).
++**Model tier:** flash
++- [x] Add `concurrency: cancel-in-progress: true`.
++- [x] Inject the `.env` file via copying from a secure external directory outside the GitHub workspace.
++- [x] Add local `docker-compose up -d --build` step.
++- [x] Add post-deployment health check polling `docker inspect --format='{{json .State.Health.Status}}'` until it returns `"healthy"`.
++
+diff --git a/docs/specs/2026-07-22-vps-migration.md b/docs/specs/2026-07-22-vps-migration.md
+new file mode 100644
+index 0000000..2fdf7db
+--- /dev/null
++++ b/docs/specs/2026-07-22-vps-migration.md
+@@ -0,0 +1,39 @@
++# Spec: Heroku to Mac Mini Migration
++**Lifecycle status:** planned
++
++## Goal
++Migrate the `tbd-bot` deployment architecture from Heroku to an M4 Mac Mini home server. This involves optimizing the Docker container, establishing deep application metrics (Prometheus/Grafana), and setting up automated CI/CD via a local GitHub Runner.
++
++## Non-goals
++- Migrating to a Cloud VPS or Serverless architecture.
++- Modifying the core Go application logic beyond adding Prometheus metrics and graceful shutdown logic.
++- Establishing remote/external access to the Grafana dashboard.
++
++## Constraints
++- The Mac Mini must maintain persistent internet access for the Discord WebSocket session.
++- Secrets (`BOTTOKEN`, etc.) must be stored securely in a local `.env` file on the Mac Mini, and securely injected into the GitHub Actions workspace.
++- Deployments must be automated via GitHub Actions. **Self-hosted runner security must be enforced** by strictly tying workflows to the `main` branch and disabling workflows from fork Pull Requests via GitHub Repository Settings.
++- The system and application timezone must remain in UTC.
++- The bot must avoid Discord Gateway bans by implementing a graceful `SIGTERM` shutdown that calls `discordgo.Session.Close()`.
++
++## Decision log
++
++| # | Decision | Choice |
++|---|---|---|
++| 1 | Hosting Platform | M4 Mac Mini Home Server. |
++| 2 | Metrics Method | Attach `/metrics` endpoint to the existing port 8080 HTTP server. |
++| 3 | Metrics Scope | Track standard operational metrics AND business-specific counters (Q&A moves, vetting, cron runs). |
++| 4 | Containerization | Multi-stage Dockerfile (Alpine base) compiled with `CGO_ENABLED=0` and a `wget`-based HEALTHCHECK. |
++| 5 | Deployment Pipeline | GitHub Self-Hosted Runner installed on the Mac Mini. Includes concurrency cancellation to prevent race conditions. |
++| 6 | RED Metrics | Use manual Prometheus timer decorators injected into specific handlers to automatically measure Latency, Success Rate, and QPS (avoiding slow Go reflection). |
++| 7 | Data Persistence | Use **Docker Named Volumes** for Prometheus and Grafana. Prometheus limited to 14d/1GB retention. Bot bounded by Docker memory limits and a matching `GOMEMLIMIT`. |
++| 8 | Dashboards as Code | Use Grafana Provisioning to auto-load Dashboards and Datasources from JSON files checked into the Git repository. |
++| 9 | Remote Access | Grafana remains local-only for maximum security by explicitly binding to `127.0.0.1:3000`. Access instructions will be documented in the README. |
++| 10 | CI Validation | Enforce `actionlint` for YAML testing, implement a native Docker `HEALTHCHECK`, and poll `docker inspect` post-deploy. |
++
++## Acceptance criteria
++- **Wave 1 (Metrics & Lifecycle):** The Go codebase is updated to expose `/metrics` on port 8080. A graceful `SIGTERM` trap closes the Discord session. RED metrics are manually injected into event handlers.
++- **Wave 2 (Docker & Monitoring Setup):** A multi-stage `Dockerfile` is implemented with a native `HEALTHCHECK`. A `docker-compose.yml` is created to launch `tbd-bot` (with `GOMEMLIMIT` and memory limits), `prometheus` (with 14d/1GB limits), and `grafana` (bound to `127.0.0.1`). Baseline JSON dashboards are provided.
++- **Wave 3 (Pipeline Setup):** A `.github/workflows/deploy.yml` action is configured with `cancel-in-progress: true`, secure `.env` workspace injection, and a true Docker health-check polling step.
++
++**Roles touched:** none
+diff --git a/go.mod b/go.mod
+index a59846b..53511ab 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,6 +1,6 @@
+ module github.com/christiansoetanto/tbd-bot
+ 
+-go 1.19
++go 1.25.0
+ 
+ require (
+ 	cloud.google.com/go/firestore v1.9.0
+@@ -9,44 +9,50 @@ require (
+ 	github.com/PuerkitoBio/goquery v1.8.1
+ 	github.com/avast/retry-go/v4 v4.5.0
+ 	github.com/bwmarrin/discordgo v0.28.1
++	github.com/prometheus/client_golang v1.24.0
+ 	github.com/robfig/cron/v3 v3.0.1
+ 	github.com/rs/xid v1.4.0
+ 	github.com/rs/zerolog v1.29.0
+ 	github.com/tidwall/gjson v1.16.0
+-	golang.org/x/text v0.8.0
++	golang.org/x/text v0.38.0
+ 	google.golang.org/api v0.110.0
+-
+ )
+ 
+ require (
+ 	cloud.google.com/go v0.107.0 // indirect
+-	cloud.google.com/go/compute v1.18.0 // indirect
+-	cloud.google.com/go/compute/metadata v0.2.3 // indirect
++	cloud.google.com/go/compute/metadata v0.3.0 // indirect
+ 	cloud.google.com/go/iam v0.8.0 // indirect
+ 	cloud.google.com/go/longrunning v0.3.0 // indirect
+ 	cloud.google.com/go/storage v1.27.0 // indirect
+ 	github.com/andybalholm/cascadia v1.3.1 // indirect
++	github.com/beorn7/perks v1.0.1 // indirect
++	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+ 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
+ 	github.com/golang/protobuf v1.5.2 // indirect
+-	github.com/google/go-cmp v0.5.9 // indirect
+-	github.com/google/uuid v1.3.0 // indirect
++	github.com/google/go-cmp v0.7.0 // indirect
++	github.com/google/uuid v1.6.0 // indirect
+ 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
+ 	github.com/googleapis/gax-go/v2 v2.7.0 // indirect
+ 	github.com/gorilla/websocket v1.4.2 // indirect
++	github.com/kylelemons/godebug v1.1.0 // indirect
+ 	github.com/mattn/go-colorable v0.1.13 // indirect
+ 	github.com/mattn/go-isatty v0.0.17 // indirect
++	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
++	github.com/prometheus/client_model v0.6.2 // indirect
++	github.com/prometheus/common v0.70.0 // indirect
++	github.com/prometheus/procfs v0.21.1 // indirect
+ 	github.com/tidwall/match v1.1.1 // indirect
+ 	github.com/tidwall/pretty v1.2.1 // indirect
+ 	go.opencensus.io v0.24.0 // indirect
+-	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 // indirect
+-	golang.org/x/net v0.8.0 // indirect
+-	golang.org/x/oauth2 v0.5.0 // indirect
+-	golang.org/x/sync v0.1.0 // indirect
+-	golang.org/x/sys v0.6.0 // indirect
++	golang.org/x/crypto v0.53.0 // indirect
++	golang.org/x/net v0.56.0 // indirect
++	golang.org/x/oauth2 v0.36.0 // indirect
++	golang.org/x/sync v0.21.0 // indirect
++	golang.org/x/sys v0.47.0 // indirect
+ 	golang.org/x/time v0.1.0 // indirect
+ 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
+ 	google.golang.org/appengine v1.6.7 // indirect
+ 	google.golang.org/genproto v0.0.0-20230209215440-0dfe4f8abfcc // indirect
+ 	google.golang.org/grpc v1.53.0 // indirect
+-	google.golang.org/protobuf v1.28.1 // indirect
++	google.golang.org/protobuf v1.36.11 // indirect
+ )
+diff --git a/go.sum b/go.sum
+index ebb9cf2..1d711be 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1,10 +1,8 @@
+ cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
+ cloud.google.com/go v0.107.0 h1:qkj22L7bgkl6vIeZDlOY2po43Mx/TIa2Wsa7VR+PEww=
+ cloud.google.com/go v0.107.0/go.mod h1:wpc2eNrD7hXUTy8EKS10jkxpZBjASrORK7goS+3YX2I=
+-cloud.google.com/go/compute v1.18.0 h1:FEigFqoDbys2cvFkZ9Fjq4gnHBP55anJ0yQyau2f9oY=
+-cloud.google.com/go/compute v1.18.0/go.mod h1:1X7yHxec2Ga+Ss6jPyjxRxpu2uu7PLgsOVXvgU0yacs=
+-cloud.google.com/go/compute/metadata v0.2.3 h1:mg4jlk7mCAj6xXp9UJ4fjI9VUI5rubuGBW5aJ7UnBMY=
+-cloud.google.com/go/compute/metadata v0.2.3/go.mod h1:VAV5nSsACxMJvgaAuX6Pk2AawlZn8kiOGuCv6gTkwuA=
++cloud.google.com/go/compute/metadata v0.3.0 h1:Tz+eQXMEqDIKRsmY3cHTL6FVaynIjX2QxYC4trgAKZc=
++cloud.google.com/go/compute/metadata v0.3.0/go.mod h1:zFmK7XCadkQkj6TtorcaGlCW1hT1fIilQDwofLpJ20k=
+ cloud.google.com/go/firestore v1.9.0 h1:IBlRyxgGySXu5VuW0RgGFlTtLukSnNkpDiEOMkQkmpA=
+ cloud.google.com/go/firestore v1.9.0/go.mod h1:HMkjKHNTtRyZNiMzu7YAsLr9K3X2udY2AMwDaMEQiiE=
+ cloud.google.com/go/iam v0.8.0 h1:E2osAkZzxI/+8pZcxVLcDtAQx/u+hZXVryUaYQ5O0Kk=
+@@ -24,11 +22,13 @@ github.com/andybalholm/cascadia v1.3.1 h1:nhxRkql1kdYCc8Snf7D5/D3spOX+dBgjA6u8x0
+ github.com/andybalholm/cascadia v1.3.1/go.mod h1:R4bJ1UQfqADjvDa4P6HZHLh/3OxWWEqc0Sk8XGwHqvA=
+ github.com/avast/retry-go/v4 v4.5.0 h1:QoRAZZ90cj5oni2Lsgl2GW8mNTnUCnmpx/iKpwVisHg=
+ github.com/avast/retry-go/v4 v4.5.0/go.mod h1:7hLEXp0oku2Nir2xBAsg0PTphp9z71bN5Aq1fboC3+I=
+-github.com/bwmarrin/discordgo v0.27.0 h1:4ZK9KN+rGIxZ0fdGTmgdCcliQeW8Zhu6MnlFI92nf0Q=
+-github.com/bwmarrin/discordgo v0.27.0/go.mod h1:NJZpH+1AfhIcyQsPeuBKsUtYrRnjkyu0kIVMCHkZtRY=
++github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
++github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
+ github.com/bwmarrin/discordgo v0.28.1 h1:gXsuo2GBO7NbR6uqmrrBDplPUx2T3nzu775q/Rd1aG4=
+ github.com/bwmarrin/discordgo v0.28.1/go.mod h1:NJZpH+1AfhIcyQsPeuBKsUtYrRnjkyu0kIVMCHkZtRY=
+ github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
++github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
++github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
+ github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
+ github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGXZJjfX53e64911xZQV5JYwmTeXPW+k8Sc=
+ github.com/coreos/go-systemd/v22 v22.3.3-0.20220203105225-a9a7ef127534/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
+@@ -64,21 +64,26 @@ github.com/google/go-cmp v0.4.0/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/
+ github.com/google/go-cmp v0.5.0/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+ github.com/google/go-cmp v0.5.3/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+ github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+-github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
+-github.com/google/go-cmp v0.5.9/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
++github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
++github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
+ github.com/google/martian/v3 v3.2.1 h1:d8MncMlErDFTwQGBK1xhv026j9kqhvw1Qv9IbWT1VLQ=
++github.com/google/martian/v3 v3.2.1/go.mod h1:oBOf6HBosgwRXnUGWUB05QECsc6uvmMiJ3+6W4l/CUk=
+ github.com/google/uuid v1.1.2/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+-github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
+-github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
++github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
++github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+ github.com/googleapis/enterprise-certificate-proxy v0.2.3 h1:yk9/cqRKtT9wXZSsRH9aurXEpJX+U6FLtpYTdC3R06k=
+ github.com/googleapis/enterprise-certificate-proxy v0.2.3/go.mod h1:AwSRAtLfXpU5Nm3pW+v7rGDHp09LsPtGY9MduiEsR9k=
+ github.com/googleapis/gax-go/v2 v2.7.0 h1:IcsPKeInNvYi7eqSaDjiZqDDKu5rsmunY0Y1YupQSSQ=
+ github.com/googleapis/gax-go/v2 v2.7.0/go.mod h1:TEop28CZZQ2y+c0VxMUmu1lV+fQx57QpBWsYpwqHJx8=
+ github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
+ github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
++github.com/klauspost/compress v1.19.0 h1:sXLILfc9jV2QYWkzFOPWStmcUVH2RHEB1JCdY2oVvCQ=
++github.com/klauspost/compress v1.19.0/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
+ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
+ github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
+ github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
++github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
++github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
+ github.com/mattn/go-colorable v0.1.12/go.mod h1:u5H1YNBxpqRaxsYJYSkiCWKzEfiAb1Gb520KVy5xxl4=
+ github.com/mattn/go-colorable v0.1.13 h1:fFA4WZxdEF4tXPZVKMLwD8oUnCTTo08duU7wxecdEvA=
+ github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg=
+@@ -86,11 +91,21 @@ github.com/mattn/go-isatty v0.0.14/go.mod h1:7GGIvUiUoEMVVmxf/4nioHXj79iQHKdU27k
+ github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
+ github.com/mattn/go-isatty v0.0.17 h1:BTarxUcIeDqL27Mc+vyvdWYSL28zpIhv3RoTdsLMPng=
+ github.com/mattn/go-isatty v0.0.17/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
++github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
++github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
+ github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+ github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
++github.com/prometheus/client_golang v1.24.0 h1:5XStIklKuAtJSNpdD3s8XJj/Yv78IQmE1kbNk87JrAI=
++github.com/prometheus/client_golang v1.24.0/go.mod h1:QcsNdotprC2nS4BTM2ucbcqxd2CeXTEa9jW7zHO9iDE=
+ github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
++github.com/prometheus/client_model v0.6.2 h1:oBsgwpGs7iVziMvrGhE53c/GrLUsZdHnqNwqPLxwZyk=
++github.com/prometheus/client_model v0.6.2/go.mod h1:y3m2F6Gdpfy6Ut/GBsUqTWZqCUvMVzSfMLjcu6wAwpE=
++github.com/prometheus/common v0.70.0 h1:bcpru3tWPVnxGnETLgOV5jbp/JRXgYEyv65CuBLAMMI=
++github.com/prometheus/common v0.70.0/go.mod h1:S/SFasQmgGiYH6C81LKCtYa8QACgthGg5zxL2udV7SY=
++github.com/prometheus/procfs v0.21.1 h1:GljZCt+zSTS+NZq88cyQ1LjZ+RCHp3uVuabBWA5+OJI=
++github.com/prometheus/procfs v0.21.1/go.mod h1:aB55Cww9pdSJVHk0hUf0inxWyyjPogFIjmHKYgMKmtY=
+ github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
+ github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
+ github.com/rs/xid v1.4.0 h1:qd7wPTDkN6KQx2VmMBLrpHkiyQwgFXRnkOLacUiaSNY=
+@@ -110,7 +125,8 @@ github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81P
+ github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
+ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
+ github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
+-github.com/stretchr/testify v1.8.2 h1:+h33VjcLVPDHtOdpUCuF+7gSuG3yGIftsP1YvFihtJ8=
++github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
++github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+ github.com/tidwall/gjson v1.16.0 h1:SyXa+dsSPpUlcwEDuKuEBJEz5vzTvOea+9rjyYodQFg=
+ github.com/tidwall/gjson v1.16.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
+ github.com/tidwall/match v1.1.1 h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA=
+@@ -123,11 +139,16 @@ github.com/yuin/goldmark v1.5.4 h1:2uY/xC0roWy8IBEGLgB1ywIoEJFGmRrX21YQcvGZzjU=
+ github.com/yuin/goldmark v1.5.4/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+ go.opencensus.io v0.24.0 h1:y73uSU6J157QMP2kn2r30vwW1A2W2WFwSCGnAVxeaD0=
+ go.opencensus.io v0.24.0/go.mod h1:vNK8G9p7aAivkbmorf4v+7Hgx+Zs0yY+0fOtgBfjQKo=
++go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
++go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
++go.yaml.in/yaml/v2 v2.4.4 h1:tuyd0P+2Ont/d6e2rl3be67goVK4R6deVxCUX5vyPaQ=
++go.yaml.in/yaml/v2 v2.4.4/go.mod h1:gMZqIpDtDqOfM0uNfy0SkpRhvUryYH0Z6wdMYcacYXQ=
+ golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
+ golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
+ golang.org/x/crypto v0.0.0-20210421170649-83a5a9bb288b/go.mod h1:T9bdIzuCu7OtxOm1hfPfRQxPLYneinmdGuTeoZ9dtd4=
+-golang.org/x/crypto v0.0.0-20210921155107-089bfa567519 h1:7I4JAnoQBe7ZtJcBaYHi5UtiO8tQHbUSXxL+pnGRANg=
+ golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
++golang.org/x/crypto v0.53.0 h1:QZ4Muo8THX6CizN2vPPd5fBGHyogrdK9fG4wLPFUsto=
++golang.org/x/crypto v0.53.0/go.mod h1:DNLU434OwVakk9PzuwV8w62mAJpRJL3vsgcfp4Qnsio=
+ golang.org/x/exp v0.0.0-20190121172915-509febef88a4/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
+ golang.org/x/lint v0.0.0-20181026193005-c67002cb31c3/go.mod h1:UVdnD1Gm6xHRNCYTkRU2/jEulfH38KcIWyp/GAMgvoE=
+ golang.org/x/lint v0.0.0-20190227174305-5b3e6a55c961/go.mod h1:wehouNa3lNwaWXcvxsM5YxQ5yQlVC4a0KAMCusXpPoU=
+@@ -147,17 +168,19 @@ golang.org/x/net v0.0.0-20210916014120-12bc252f5db8/go.mod h1:9nx3DQGgdP8bBQD5qx
+ golang.org/x/net v0.0.0-20220722155237-a158d28d115b/go.mod h1:XRhObCWvk6IyKnWLug+ECip1KBveYUHfp+8e9klMJ9c=
+ golang.org/x/net v0.6.0/go.mod h1:2Tu9+aMcznHK/AK1HMvgo6xiTLG5rD5rZLDS+rp2Bjs=
+ golang.org/x/net v0.7.0/go.mod h1:2Tu9+aMcznHK/AK1HMvgo6xiTLG5rD5rZLDS+rp2Bjs=
+-golang.org/x/net v0.8.0 h1:Zrh2ngAOFYneWTAIAPethzeaQLuHwhuBkuV6ZiRnUaQ=
+ golang.org/x/net v0.8.0/go.mod h1:QVkue5JL9kW//ek3r6jTKnTFis1tRmNAW2P1shuFdJc=
++golang.org/x/net v0.56.0 h1:Rw8j/hFzGvJUZwNBXnAtf5sVDVt+65SK2C7IxCxZt5o=
++golang.org/x/net v0.56.0/go.mod h1:D3Ku6r+V6JROoZK144D2XfMHFcMq/0zSfLelVTCFKec=
+ golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
+-golang.org/x/oauth2 v0.5.0 h1:HuArIo48skDwlrvM3sEdHXElYslAMsf3KwRkkW4MC4s=
+-golang.org/x/oauth2 v0.5.0/go.mod h1:9/XBHVqLaWO3/BRHs5jbpYCnOZVjj5V0ndyaAM7KB4I=
++golang.org/x/oauth2 v0.36.0 h1:peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=
++golang.org/x/oauth2 v0.36.0/go.mod h1:YDBUJMTkDnJS+A4BP4eZBjCqtokkg1hODuPjwiGPO7Q=
+ golang.org/x/sync v0.0.0-20180314180146-1d60e4601c6f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+ golang.org/x/sync v0.0.0-20181108010431-42b317875d0f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+ golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+ golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+-golang.org/x/sync v0.1.0 h1:wsuoTGHzEhffawBOhz5CYhcrV4IdKZbEyZjBMuTp12o=
+ golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
++golang.org/x/sync v0.21.0 h1:HLII4xRRTtCRkxYp4HNFF0Js/Og6q2i++KXbg0gHCwM=
++golang.org/x/sync v0.21.0/go.mod h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=
+ golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+ golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+ golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+@@ -171,8 +194,9 @@ golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a/go.mod h1:oPkhp1MJrh7nUepCBc
+ golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.5.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.6.0 h1:MVltZSvRTcU2ljQOhs94SXPftV6DCNnZViHeQps87pQ=
+ golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
++golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
++golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+ golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
+ golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
+ golang.org/x/term v0.5.0/go.mod h1:jMB1sMXY+tzblOD4FWmEbocvup2/aLOaQEp7JmGp78k=
+@@ -183,8 +207,9 @@ golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+ golang.org/x/text v0.3.6/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+ golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
+ golang.org/x/text v0.7.0/go.mod h1:mrYo+phRRbMaCq/xk9113O4dZlRixOauAjOtrjsXDZ8=
+-golang.org/x/text v0.8.0 h1:57P1ETyNKtuIjB4SRd15iJxuhj8Gc416Y78H3qgMh68=
+ golang.org/x/text v0.8.0/go.mod h1:e1OnstbJyHTd6l/uOt8jFFHp6TRDWZR/bV3emEE/zU8=
++golang.org/x/text v0.38.0 h1:sXmwo9DwP3OK9EZ7PqAdaooSGozfl/3a6/xJcbzPRhE=
++golang.org/x/text v0.38.0/go.mod h1:YXZt3QhHUKYT53r2lLKFIVi6Ao1jdzrTR/KQ09qyxF4=
+ golang.org/x/time v0.1.0 h1:xYY+Bajn2a7VBmTM5GikTmnK8ZuX8YgnQCqZpbBNtmA=
+ golang.org/x/time v0.1.0/go.mod h1:tRJNPiyCQ0inRvYxbN9jk5I+vvW/OXSQhTDSoE431IQ=
+ golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+@@ -228,8 +253,8 @@ google.golang.org/protobuf v1.23.1-0.20200526195155-81db48ad09cc/go.mod h1:EGpAD
+ google.golang.org/protobuf v1.25.0/go.mod h1:9JNX74DMeImyA3h4bdi1ymwjUzf21/xIlbajtzgsN7c=
+ google.golang.org/protobuf v1.26.0-rc.1/go.mod h1:jlhhOSvTdKEhbULTjvd4ARK9grFBp09yW+WbY/TyQbw=
+ google.golang.org/protobuf v1.26.0/go.mod h1:9q0QmTI4eRPtz6boOQmLYwt+qCgq0jsYwAQnmE0givc=
+-google.golang.org/protobuf v1.28.1 h1:d0NfwRgPtno5B1Wa6L2DAG+KivqkdutMf1UhdNx175w=
+-google.golang.org/protobuf v1.28.1/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
++google.golang.org/protobuf v1.36.11 h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
++google.golang.org/protobuf v1.36.11/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
+ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+ gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+ gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
+diff --git a/grafana/provisioning/dashboards/bot-dashboard.json b/grafana/provisioning/dashboards/bot-dashboard.json
+new file mode 100644
+index 0000000..00377c3
+--- /dev/null
++++ b/grafana/provisioning/dashboards/bot-dashboard.json
+@@ -0,0 +1,431 @@
++{
++  "annotations": {
++    "list": [
++      {
++        "builtIn": 1,
++        "datasource": "-- Grafana --",
++        "enable": true,
++        "hide": true,
++        "name": "Annotations & Alerts",
++        "type": "dashboard"
++      }
++    ]
++  },
++  "editable": true,
++  "fiscalYearStartMonth": 0,
++  "graphTooltip": 0,
++  "id": null,
++  "links": [],
++  "liveNow": false,
++  "panels": [
++    {
++      "collapsed": false,
++      "gridPos": {
++        "h": 1,
++        "w": 24,
++        "x": 0,
++        "y": 0
++      },
++      "id": 1,
++      "title": "RED Metrics (Rate, Errors, Duration)",
++      "type": "row"
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "custom": {
++            "drawStyle": "line",
++            "lineInterpolation": "smooth"
++          },
++          "unit": "reqps"
++        }
++      },
++      "gridPos": {
++        "h": 8,
++        "w": 8,
++        "x": 0,
++        "y": 1
++      },
++      "id": 2,
++      "title": "Rate - Handler QPS",
++      "type": "timeseries",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "sum(rate(tbd_bot_handler_requests_total[5m])) by (handler, status)",
++          "legendFormat": "{{handler}} ({{status}})",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "custom": {
++            "drawStyle": "line",
++            "lineInterpolation": "smooth"
++          },
++          "unit": "short"
++        }
++      },
++      "gridPos": {
++        "h": 8,
++        "w": 8,
++        "x": 8,
++        "y": 1
++      },
++      "id": 3,
++      "title": "Errors - Handler Errors",
++      "type": "timeseries",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "sum(rate(tbd_bot_handler_requests_total{status=\"error\"}[5m])) by (handler)",
++          "legendFormat": "{{handler}}",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "custom": {
++            "drawStyle": "line",
++            "lineInterpolation": "smooth"
++          },
++          "unit": "s"
++        }
++      },
++      "gridPos": {
++        "h": 8,
++        "w": 8,
++        "x": 16,
++        "y": 1
++      },
++      "id": 4,
++      "title": "Duration - p95 Latency",
++      "type": "timeseries",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "histogram_quantile(0.95, sum(rate(tbd_bot_handler_duration_seconds_bucket[5m])) by (le, handler))",
++          "legendFormat": "{{handler}} p95",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "collapsed": false,
++      "gridPos": {
++        "h": 1,
++        "w": 24,
++        "x": 0,
++        "y": 9
++      },
++      "id": 5,
++      "title": "Business Counters",
++      "type": "row"
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "thresholds"
++          },
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "blue",
++                "value": null
++              }
++            ]
++          },
++          "unit": "none"
++        }
++      },
++      "gridPos": {
++        "h": 4,
++        "w": 6,
++        "x": 0,
++        "y": 10
++      },
++      "id": 6,
++      "title": "Q&A Moves Total",
++      "type": "stat",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "tbd_bot_qa_moves_total",
++          "legendFormat": "Q&A Moves",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "thresholds"
++          },
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "green",
++                "value": null
++              }
++            ]
++          },
++          "unit": "none"
++        }
++      },
++      "gridPos": {
++        "h": 4,
++        "w": 6,
++        "x": 6,
++        "y": 10
++      },
++      "id": 7,
++      "title": "Users Vetted Total",
++      "type": "stat",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "tbd_bot_users_vetted_total",
++          "legendFormat": "Users Vetted",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "thresholds"
++          },
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "purple",
++                "value": null
++              }
++            ]
++          },
++          "unit": "none"
++        }
++      },
++      "gridPos": {
++        "h": 4,
++        "w": 6,
++        "x": 12,
++        "y": 10
++      },
++      "id": 8,
++      "title": "Terra Sancta Users Vetted Total",
++      "type": "stat",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "tbd_bot_ts_users_vetted_total",
++          "legendFormat": "TS Users Vetted",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "custom": {
++            "drawStyle": "line"
++          },
++          "unit": "short"
++        }
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 12,
++        "x": 0,
++        "y": 14
++      },
++      "id": 9,
++      "title": "Cron Executions",
++      "type": "timeseries",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "sum(tbd_bot_cron_executions_total) by (cron_name)",
++          "legendFormat": "{{cron_name}}",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "custom": {
++            "drawStyle": "line"
++          },
++          "unit": "short"
++        }
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 12,
++        "x": 12,
++        "y": 14
++      },
++      "id": 10,
++      "title": "CM Actions",
++      "type": "timeseries",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "sum(tbd_bot_cm_actions_total) by (action)",
++          "legendFormat": "{{action}}",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "custom": {
++            "drawStyle": "line"
++          },
++          "unit": "short"
++        }
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 12,
++        "x": 0,
++        "y": 20
++      },
++      "id": 11,
++      "title": "Messages Processed",
++      "type": "timeseries",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "sum(tbd_bot_messages_processed_total) by (handler)",
++          "legendFormat": "{{handler}}",
++          "refId": "A"
++        }
++      ]
++    },
++    {
++      "datasource": {
++        "type": "prometheus",
++        "uid": "prometheus"
++      },
++      "fieldConfig": {
++        "defaults": {
++          "custom": {
++            "drawStyle": "line"
++          },
++          "unit": "short"
++        }
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 12,
++        "x": 12,
++        "y": 20
++      },
++      "id": 12,
++      "title": "Component Interactions",
++      "type": "timeseries",
++      "targets": [
++        {
++          "datasource": {
++            "type": "prometheus",
++            "uid": "prometheus"
++          },
++          "expr": "sum(tbd_bot_component_interactions_total) by (component)",
++          "legendFormat": "{{component}}",
++          "refId": "A"
++        }
++      ]
++    }
++  ],
++  "refresh": "10s",
++  "schemaVersion": 36,
++  "style": "dark",
++  "tags": [
++    "tbd-bot",
++    "prometheus"
++  ],
++  "time": {
++    "from": "now-1h",
++    "to": "now"
++  },
++  "timepicker": {},
++  "timezone": "browser",
++  "title": "tbd-bot Operational Dashboard",
++  "uid": "tbd-bot-dashboard"
++}
+diff --git a/grafana/provisioning/dashboards/dashboard-provider.yml b/grafana/provisioning/dashboards/dashboard-provider.yml
+new file mode 100644
+index 0000000..f4b3078
+--- /dev/null
++++ b/grafana/provisioning/dashboards/dashboard-provider.yml
+@@ -0,0 +1,11 @@
++apiVersion: 1
++
++providers:
++  - name: 'default'
++    orgId: 1
++    folder: ''
++    type: file
++    disableDeletion: false
++    editable: true
++    options:
++      path: /etc/grafana/provisioning/dashboards
+diff --git a/grafana/provisioning/datasources/datasource.yml b/grafana/provisioning/datasources/datasource.yml
+new file mode 100644
+index 0000000..bb009bb
+--- /dev/null
++++ b/grafana/provisioning/datasources/datasource.yml
+@@ -0,0 +1,9 @@
++apiVersion: 1
++
++datasources:
++  - name: Prometheus
++    type: prometheus
++    access: proxy
++    url: http://prometheus:9090
++    isDefault: true
++    editable: false
+diff --git a/main.go b/main.go
+index e07d19a..52af6a5 100644
+--- a/main.go
++++ b/main.go
+@@ -2,7 +2,16 @@ package main
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"fmt"
++	"log"
++	"net/http"
++	"os"
++	"os/signal"
++	"strconv"
++	"syscall"
++	"time"
++
+ 	"github.com/bwmarrin/discordgo"
+ 	"github.com/christiansoetanto/tbd-bot/config"
+ 	"github.com/christiansoetanto/tbd-bot/database"
+@@ -10,14 +19,13 @@ import (
+ 	"github.com/christiansoetanto/tbd-bot/dbot/handler"
+ 	"github.com/christiansoetanto/tbd-bot/logv2"
+ 	"github.com/christiansoetanto/tbd-bot/provider"
+-	"log"
+-	"net/http"
+-	"os"
+-	"os/signal"
+-	"strconv"
+-	"syscall"
++	"github.com/prometheus/client_golang/prometheus/promhttp"
+ )
+ 
++type DiscordCloser interface {
++	Close() error
++}
++
+ func main() {
+ 	ctx := context.Background()
+ 	logv2.Debug(ctx, logv2.Info, "Starting tbd-bot...")
+@@ -58,44 +66,78 @@ func main() {
+ 		log.Fatal(err)
+ 	}
+ 
+-	defer func() {
+-		e := dbotObject.CloseDiscordgoConn()
+-		if e != nil {
+-			logv2.Debug(ctx, logv2.Warning, "discordgo connection closed with error: "+e.Error())
+-		} else {
+-			logv2.Debug(ctx, logv2.Info, "discordgo connection closed")
+-		}
+-		database.Close(ctx)
+-	}()
++	defer database.Close(ctx)
+ 
+-	// Health check endpoint
+-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+-		w.WriteHeader(http.StatusOK)
+-		w.Write([]byte("OK /health"))
+-	})
+-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+-		w.WriteHeader(http.StatusOK)
+-		w.Write([]byte("OK /"))
+-	})
+-	//prov.HelloWorld(ctx)
+-	// Wait here until CTRL-C or other term signal is received.
+-	logv2.Debug(ctx, logv2.Info, "Session is now running.  Press CTRL-C to exit.")
+-	// Start HTTP server in a goroutine
++	handler := setupRoutes()
+ 	port := os.Getenv("PORT")
+ 	if port == "" {
+-		port = "8080" // Default port for Azure App Service
++		port = "8080"
++	}
++
++	srv := &http.Server{
++		Addr:    ":" + port,
++		Handler: handler,
+ 	}
+ 
+ 	go func() {
+ 		logv2.Debug(ctx, logv2.Info, fmt.Sprintf("Starting HTTP server on port %s", port))
+-		if err := http.ListenAndServe(":"+port, nil); err != nil {
++		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+ 			logv2.Error(ctx, err, "HTTP server failed")
+ 		}
+ 	}()
++
++	logv2.Debug(ctx, logv2.Info, "Session is now running. Press CTRL-C to exit.")
++
+ 	sc := make(chan os.Signal, 1)
+-	//syscall.SIGTERM,
+ 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
+-	<-sc
+ 
+-	logv2.Debug(ctx, logv2.Info, "Gracefully shutting down.")
++	if err := gracefulShutdown(ctx, srv, session, sc); err != nil {
++		logv2.Error(ctx, err, "Error during graceful shutdown")
++	}
++}
++
++func gracefulShutdown(ctx context.Context, srv *http.Server, session DiscordCloser, sigChan <-chan os.Signal) error {
++	sig := <-sigChan
++	logv2.Debug(ctx, logv2.Info, fmt.Sprintf("Received signal %v, shutting down gracefully...", sig))
++
++	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
++	defer cancel()
++
++	var firstErr error
++
++	if srv != nil {
++		if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
++			logv2.Error(ctx, err, "HTTP server shutdown error")
++			firstErr = err
++		} else {
++			logv2.Debug(ctx, logv2.Info, "HTTP server shut down successfully")
++		}
++	}
++
++	if session != nil {
++		if err := session.Close(); err != nil {
++			logv2.Error(ctx, err, "Discord session close error")
++			if firstErr == nil {
++				firstErr = err
++			}
++		} else {
++			logv2.Debug(ctx, logv2.Info, "Discord session closed successfully")
++		}
++	}
++
++	return firstErr
++}
++
++func setupRoutes() http.Handler {
++	mux := http.NewServeMux()
++	mux.Handle("/metrics", promhttp.Handler())
++	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
++		w.WriteHeader(http.StatusOK)
++		w.Write([]byte("OK /health"))
++	})
++	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
++		w.WriteHeader(http.StatusOK)
++		w.Write([]byte("OK /"))
++	})
++	return mux
+ }
+diff --git a/main_test.go b/main_test.go
+new file mode 100644
+index 0000000..b966d21
+--- /dev/null
++++ b/main_test.go
+@@ -0,0 +1,296 @@
++package main
++
++import (
++	"context"
++	"encoding/json"
++	"net"
++	"net/http"
++
++	"net/http/httptest"
++	"os"
++	"strings"
++	"syscall"
++	"testing"
++	"time"
++)
++
++type mockDiscordSession struct {
++	closed bool
++}
++
++func (m *mockDiscordSession) Close() error {
++	m.closed = true
++	return nil
++}
++
++func TestMetricsEndpoint(t *testing.T) {
++	handler := setupRoutes()
++	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
++	rec := httptest.NewRecorder()
++
++	handler.ServeHTTP(rec, req)
++
++	if rec.Code != http.StatusOK {
++		t.Fatalf("expected status code %d, got %d", http.StatusOK, rec.Code)
++	}
++
++	body := rec.Body.String()
++	if !strings.Contains(body, "go_goroutines") {
++		t.Fatalf("expected metrics response to contain 'go_goroutines', got:\n%s", body)
++	}
++	if !strings.Contains(body, "tbd_bot_qa_moves_total") {
++		t.Fatalf("expected metrics response to contain 'tbd_bot_qa_moves_total', got:\n%s", body)
++	}
++	if !strings.Contains(body, "tbd_bot_users_vetted_total") {
++		t.Fatalf("expected metrics response to contain 'tbd_bot_users_vetted_total', got:\n%s", body)
++	}
++}
++
++func TestGracefulShutdown_SIGINT(t *testing.T) {
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatalf("failed to listen: %v", err)
++	}
++
++	srv := &http.Server{
++		Handler: setupRoutes(),
++	}
++
++	serverErrCh := make(chan error, 1)
++	go func() {
++		serverErrCh <- srv.Serve(listener)
++	}()
++
++	mockSession := &mockDiscordSession{}
++	sigChan := make(chan os.Signal, 1)
++	sigChan <- syscall.SIGINT
++
++	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
++	defer cancel()
++
++	err = gracefulShutdown(ctx, srv, mockSession, sigChan)
++	if err != nil {
++		t.Fatalf("expected gracefulShutdown to succeed, got error: %v", err)
++	}
++
++	if !mockSession.closed {
++		t.Errorf("expected Discord session to be closed on SIGINT")
++	}
++
++	select {
++	case err := <-serverErrCh:
++		if err != nil && err != http.ErrServerClosed {
++			t.Errorf("expected http.ErrServerClosed, got: %v", err)
++		}
++	case <-time.After(1 * time.Second):
++		t.Errorf("expected HTTP server to exit after shutdown")
++	}
++}
++
++func TestGracefulShutdown_SIGTERM(t *testing.T) {
++	listener, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatalf("failed to listen: %v", err)
++	}
++
++	srv := &http.Server{
++		Handler: setupRoutes(),
++	}
++
++	serverErrCh := make(chan error, 1)
++	go func() {
++		serverErrCh <- srv.Serve(listener)
++	}()
++
++	mockSession := &mockDiscordSession{}
++	sigChan := make(chan os.Signal, 1)
++	sigChan <- syscall.SIGTERM
++
++	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
++	defer cancel()
++
++	err = gracefulShutdown(ctx, srv, mockSession, sigChan)
++	if err != nil {
++		t.Fatalf("expected gracefulShutdown to succeed, got error: %v", err)
++	}
++
++	if !mockSession.closed {
++		t.Errorf("expected Discord session to be closed on SIGTERM")
++	}
++
++	select {
++	case err := <-serverErrCh:
++		if err != nil && err != http.ErrServerClosed {
++			t.Errorf("expected http.ErrServerClosed, got: %v", err)
++		}
++	case <-time.After(1 * time.Second):
++		t.Errorf("expected HTTP server to exit after shutdown")
++	}
++}
++
++func TestDockerfile_MultiStageAndHealthcheck(t *testing.T) {
++	content, err := os.ReadFile("Dockerfile")
++	if err != nil {
++		t.Fatalf("failed to read Dockerfile: %v", err)
++	}
++
++	dockerfile := string(content)
++
++	if !strings.Contains(dockerfile, "golang:1.22-alpine") {
++		t.Errorf("expected Dockerfile to use golang:1.22-alpine base image")
++	}
++
++	if !strings.Contains(dockerfile, "CGO_ENABLED=0") {
++		t.Errorf("expected Dockerfile to set CGO_ENABLED=0")
++	}
++
++	if !strings.Contains(dockerfile, "HEALTHCHECK") {
++		t.Errorf("expected Dockerfile to contain HEALTHCHECK directive")
++	}
++
++	if !strings.Contains(dockerfile, "wget") {
++		t.Errorf("expected HEALTHCHECK to use wget")
++	}
++
++	if !strings.Contains(dockerfile, "http://localhost:8080/metrics") && !strings.Contains(dockerfile, ":8080/metrics") {
++		t.Errorf("expected HEALTHCHECK to query http://localhost:8080/metrics")
++	}
++}
++
++func TestDockerComposeAndMonitoringSetup(t *testing.T) {
++	composeBytes, err := os.ReadFile("docker-compose.yml")
++	if err != nil {
++		t.Fatalf("failed to read docker-compose.yml: %v", err)
++	}
++	compose := string(composeBytes)
++
++	requiredComposeSubstrings := []string{
++		"tbd-bot",
++		"prometheus",
++		"grafana",
++		"GOMEMLIMIT=",
++		"127.0.0.1:3000",
++		"--storage.tsdb.retention.time=14d",
++		"--storage.tsdb.retention.size=1GB",
++		"prometheus_data:",
++		"grafana_data:",
++	}
++	for _, sub := range requiredComposeSubstrings {
++		if !strings.Contains(compose, sub) {
++			t.Errorf("docker-compose.yml missing expected substring: %q", sub)
++		}
++	}
++
++	promBytes, err := os.ReadFile("prometheus/prometheus.yml")
++	if err != nil {
++		t.Fatalf("failed to read prometheus/prometheus.yml: %v", err)
++	}
++	prom := string(promBytes)
++	if !strings.Contains(prom, "tbd-bot:8080") {
++		t.Errorf("prometheus.yml missing target tbd-bot:8080")
++	}
++
++	dsBytes, err := os.ReadFile("grafana/provisioning/datasources/datasource.yml")
++	if err != nil {
++		t.Fatalf("failed to read grafana/provisioning/datasources/datasource.yml: %v", err)
++	}
++	if !strings.Contains(string(dsBytes), "http://prometheus:9090") {
++		t.Errorf("datasource.yml missing http://prometheus:9090")
++	}
++
++	dbProvBytes, err := os.ReadFile("grafana/provisioning/dashboards/dashboard-provider.yml")
++	if err != nil {
++		t.Fatalf("failed to read grafana/provisioning/dashboards/dashboard-provider.yml: %v", err)
++	}
++	if !strings.Contains(string(dbProvBytes), "/etc/grafana/provisioning/dashboards") {
++		t.Errorf("dashboard-provider.yml missing dashboard path")
++	}
++
++	envBytes, err := os.ReadFile(".env.example")
++	if err != nil {
++		t.Fatalf("failed to read .env.example: %v", err)
++	}
++	envEx := string(envBytes)
++	if !strings.Contains(envEx, "GOMEMLIMIT=") || !strings.Contains(envEx, "PORT=") {
++		t.Errorf(".env.example missing expected variables")
++	}
++}
++
++func TestDocumentation_GrafanaAndRunnerSecurity(t *testing.T) {
++	readmeBytes, err := os.ReadFile("README.md")
++	if err != nil {
++		t.Fatalf("failed to read README.md: %v", err)
++	}
++	readme := string(readmeBytes)
++
++	requiredSubstrings := []string{
++		"127.0.0.1:3000",
++		"Grafana",
++		"Fork",
++		"runner",
++	}
++
++	for _, sub := range requiredSubstrings {
++		if !strings.Contains(readme, sub) {
++			t.Errorf("README.md missing expected documentation section containing: %q", sub)
++		}
++	}
++}
++
++func TestGrafanaDashboardJSON(t *testing.T) {
++	dashPath := "grafana/provisioning/dashboards/bot-dashboard.json"
++	data, err := os.ReadFile(dashPath)
++	if err != nil {
++		t.Fatalf("failed to read %s: %v", dashPath, err)
++	}
++
++	var parsed map[string]any
++	if err := json.Unmarshal(data, &parsed); err != nil {
++		t.Fatalf("bot-dashboard.json is not valid JSON: %v", err)
++	}
++
++	raw := string(data)
++	requiredMetrics := []string{
++		"tbd_bot_handler_requests_total",
++		"tbd_bot_handler_duration_seconds",
++		"tbd_bot_qa_moves_total",
++		"tbd_bot_users_vetted_total",
++		"tbd_bot_ts_users_vetted_total",
++		"tbd_bot_cron_executions_total",
++		"tbd_bot_cm_actions_total",
++		"tbd_bot_messages_processed_total",
++		"tbd_bot_component_interactions_total",
++	}
++
++	for _, metric := range requiredMetrics {
++		if !strings.Contains(raw, metric) {
++			t.Errorf("bot-dashboard.json missing Prometheus metric query for: %q", metric)
++		}
++	}
++}
++
++func TestDeployWorkflow(t *testing.T) {
++	deployPath := ".github/workflows/deploy.yml"
++	data, err := os.ReadFile(deployPath)
++	if err != nil {
++		t.Fatalf("failed to read %s: %v", deployPath, err)
++	}
++
++	content := string(data)
++
++	requiredSubstrings := []string{
++		"main",
++		"self-hosted",
++		"cancel-in-progress: true",
++		"docker-compose up -d --build",
++		"docker inspect --format='{{json .State.Health.Status}}'",
++		"\"healthy\"",
++		"~/tbd-bot-secrets/.env",
++	}
++
++	for _, sub := range requiredSubstrings {
++		if !strings.Contains(content, sub) {
++			t.Errorf("deploy.yml missing required constraint substring: %q", sub)
++		}
++	}
++}
+diff --git a/memory-progress.md b/memory-progress.md
+new file mode 100644
+index 0000000..1ae35bc
+--- /dev/null
++++ b/memory-progress.md
+@@ -0,0 +1,7 @@
++# Memory Progress — tbd-bot
++
++- 2026-07-22: Completed Galdr setup and repo architecture analysis. Created `docs/agents/galdr.md`, `CLAUDE.md`, `docs/agents/roles-and-journeys.md`, `memory.md`, and `memory-progress.md`.
++- 2026-07-22: Completed Epic: Mac Mini Deployment & Monitoring. Containerized the bot, implemented Prometheus RED metrics and business counters, orchestrated via `docker-compose`, built an IaC Grafana dashboard, and deployed via a secure GitHub self-hosted runner. Full specs at `docs/specs/2026-07-22-vps-migration.md`. Compacted architecture details into `memory.md`.
++
++next: [Awaiting User Instructions for Next Feature/Epic]
++
+diff --git a/memory.md b/memory.md
+new file mode 100644
+index 0000000..5ddeb78
+--- /dev/null
++++ b/memory.md
+@@ -0,0 +1,52 @@
++# Repository Memory — tbd-bot
++
++## System Overview
++`tbd-bot` is a Go-based Discord bot designed for multi-guild management (Servus Dei, Capital Mindset, Terra Sancta) with specialized Catholic liturgical features and strict community vetting/moderation tooling.
++
++## Architecture & Layers
++- **`main.go`**: Entry point. Parses environment variables (`DEVMODE`, `BOTTOKEN`, `PORT`, `TBDENV`, `FIREBASE_CONFIG`), initializes config, ZeroLog logging, Firestore, Discord session, and an HTTP health check server (port 8080 default).
++- **`config/`**: Guild-specific configurations (Staging vs Production) mapped by `GuildId`. Controls feature toggles (`RegisteredFeature`), channel/role mappings, and thresholds (e.g., question limiters).
++- **`domain/`**: Core types and constants (`FeatureKey`, `ReligionRoleKey`, `Question`, `Poll`, `Option`, `Voter`).
++- **`dbot/init.go`**: Handles bot startup by bulk overwriting Discord Slash Commands based on guild feature toggles and registering `robfig/cron/v3` jobs. 
++- **`dbot/handler/`**: Discord interaction handlers (slash commands, message components, keyword detection, reaction events).
++- **`provider/dbms/firestore.go`**: Database layer. Appends the `TBDENV` suffix to collections (e.g., `users_staging`, `questions_prod`) for `users`, `logs`, `questions`, and `polls`.
++- **`util/`**: Helpers for scraping, API fetching, Markdown conversion, and Discord Embed building.
++
++## Deep Feature Mechanics
++1. **Vetting & Verification (`/sdverify`)**: 
++   - A strict state machine: Adds `ApprovedUser` + specific `ReligionRole` while actively stripping `VettingQuestioning` and all `Vetting` roles.
++   - Detects invalid vetting responses via keywords and regex (e.g., checking for the secret INRI code).
++2. **Liturgical Calendar (`util/calendar.go`)**: 
++   - Fetches from a custom Romcal API via a Google Cloud Function (`ROMCAL_API_FUNCTIONS_URL`).
++   - Identifies Holy Days of Obligation, Feasts, and Solemnities. (Note: The logic to `@mention` Latin Catholics for HDOs is currently hard-disabled in code).
++3. **Office of Readings (`util/office_of_readings.go`)**: 
++   - Scrapes `ibreviary.com` using `goquery`. Extracts the "SECOND READING" node, converts HTML to Markdown, strips out the Responsory, and chunks text to fit Discord's 3000-character embed limit.
++4. **Q&A Management & Mover (`dbot/handler/reaction_add.go`)**: 
++   - Triggered manually by a moderator reacting to a question. 
++   - The bot searches up to 3000 messages in the discussion channel to find the answer, builds a jump URL, posts an embed to `#answered-questions`, and **deletes** the original question.
++5. **CM Question Limiter (`dbot/handler/message.go`)**: 
++   - Limits users in Capital Mindset from asking questions too frequently (tracked via Firestore timestamps).
++   - Violators receive a DM and have their question deleted (bypassed by `UnlimitedRoleIds`).
++6. **Polls & Voting**: Interactive Discord UI buttons with state persisted in Firestore.
++
++## Environment Variables
++- `BOTTOKEN`: Discord Bot Token (Required).
++- `DEVMODE`: Boolean string (`true`/`false`).
++- `TBDENV`: Environment identifier (`staging` or `prod`).
++- `PORT`: HTTP health check port (Default `8080`).
++- `FIREBASE_CONFIG`: Service account JSON string for Firebase/Firestore.
++- `ROMCAL_API_FUNCTIONS_URL`: Cloud Function URL for calendar data.
++- `GOMEMLIMIT`: Soft memory limit for Go garbage collection (required for Docker).
++- `GF_SECURITY_ADMIN_PASSWORD`: Admin password for Grafana.
++
++## Deployment & Monitoring (Mac Mini)
++- **Deployment**: Automated via GitHub Actions (`.github/workflows/deploy.yml`) targeting a local `self-hosted` runner on an M4 Mac Mini.
++- **Infrastructure**: Containerized via a multi-stage `Dockerfile` (`golang:1.22-alpine` with `CGO_ENABLED=0` and `wget` healthcheck) and orchestrated via `docker-compose.yml`.
++- **Secrets Management**: The `.env` file is excluded from Git and injected directly from `~/tbd-bot-secrets/.env` on the Mac Mini runner to prevent unauthorized PR exfiltration.
++- **Data Safety**: Uses Docker named volumes (`prometheus_data`, `grafana_data`) to survive reboots without macOS permission loops. Prometheus is strictly limited to 14 days or 1GB retention.
++- **Monitoring (Prometheus/Grafana)**:
++  - Custom HTTP `/metrics` server running on port 8080.
++  - **RED Metrics**: Manual timer decorators wrap Discord event handlers (`tbd_bot_handler_duration_seconds`, `tbd_bot_handler_requests_total`).
++  - **Business Counters**: Extensively tracks `tbd_bot_cron_executions_total`, `tbd_bot_qa_moves_total`, `tbd_bot_users_vetted_total`, etc.
++  - **Dashboards as Code**: Grafana is provisioned via IaC to auto-load datasources and `bot-dashboard.json`.
++  - **Lifecycle**: Uses a graceful `SIGINT`/`SIGTERM` OS trap to explicitly call `discordgo.Session.Close()` upon container shutdown to prevent Gateway disconnect bans.
+diff --git a/prometheus/prometheus.yml b/prometheus/prometheus.yml
+new file mode 100644
+index 0000000..73f2a4a
+--- /dev/null
++++ b/prometheus/prometheus.yml
+@@ -0,0 +1,10 @@
++global:
++  scrape_interval: 15s
++  evaluation_interval: 15s
++
++scrape_configs:
++  - job_name: 'tbd-bot'
++    scrape_interval: 5s
++    metrics_path: '/metrics'
++    static_configs:
++      - targets: ['tbd-bot:8080']
+diff --git a/scripts/verify_dockerfile.sh b/scripts/verify_dockerfile.sh
+new file mode 100755
+index 0000000..89a8d62
+--- /dev/null
++++ b/scripts/verify_dockerfile.sh
+@@ -0,0 +1,61 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++echo "==> Verifying Dockerfile static requirements..."
++
++DOCKERFILE="Dockerfile"
++
++if [ ! -f "$DOCKERFILE" ]; then
++    echo "ERROR: Dockerfile not found!"
++    exit 1
++fi
++
++# Check multi-stage base image
++if ! grep -q "golang:1.22-alpine" "$DOCKERFILE"; then
++    echo "ERROR: Dockerfile does not use golang:1.22-alpine"
++    exit 1
++fi
++
++# Check CGO_ENABLED=0
++if ! grep -q "CGO_ENABLED=0" "$DOCKERFILE"; then
++    echo "ERROR: Dockerfile does not set CGO_ENABLED=0"
++    exit 1
++fi
++
++# Check HEALTHCHECK directive
++if ! grep -q "HEALTHCHECK" "$DOCKERFILE"; then
++    echo "ERROR: Dockerfile does not contain HEALTHCHECK directive"
++    exit 1
++fi
++
++# Check wget usage in HEALTHCHECK
++if ! grep -q "wget" "$DOCKERFILE"; then
++    echo "ERROR: HEALTHCHECK does not use wget"
++    exit 1
++fi
++
++# Check target metrics endpoint in HEALTHCHECK
++if ! grep -E -q "http://localhost:8080/metrics|:8080/metrics" "$DOCKERFILE"; then
++    echo "ERROR: HEALTHCHECK does not target http://localhost:8080/metrics"
++    exit 1
++fi
++
++echo "✓ Static Dockerfile verification passed."
++
++echo "==> Verifying static Go build with CGO_ENABLED=0..."
++GOPATH="/Users/chris/go" GOCACHE="/Users/chris/Library/Caches/go-build" CGO_ENABLED=0 GOOS=linux "${GO_BIN:-go}" build -o /dev/null .
++echo "✓ Go static compilation (CGO_ENABLED=0 GOOS=linux) succeeded."
++
++if command -v docker >/dev/null 2>&1; then
++    echo "==> Running docker build and docker inspect..."
++    docker build -t tbd-bot:test .
++    HEALTHCHECK_CONFIG=$(docker inspect --format='{{json .Config.Healthcheck}}' tbd-bot:test)
++    echo "Docker inspect healthcheck output: $HEALTHCHECK_CONFIG"
++    if [ "$HEALTHCHECK_CONFIG" = "null" ] || [ -z "$HEALTHCHECK_CONFIG" ]; then
++        echo "ERROR: docker inspect reported null or empty Healthcheck config!"
++        exit 1
++    fi
++    echo "✓ Docker build and docker inspect validation succeeded."
++else
++    echo "ℹ Docker CLI not detected in current environment. Static validation and CGO_ENABLED=0 compilation passed cleanly."
++fi
+diff --git a/util/metrics.go b/util/metrics.go
+new file mode 100644
+index 0000000..ab887c7
+--- /dev/null
++++ b/util/metrics.go
+@@ -0,0 +1,143 @@
++package util
++
++import (
++	"sync"
++	"time"
++
++	"github.com/bwmarrin/discordgo"
++	"github.com/prometheus/client_golang/prometheus"
++)
++
++var (
++	QAMovesTotal = prometheus.NewCounter(prometheus.CounterOpts{
++		Name: "tbd_bot_qa_moves_total",
++		Help: "Total number of Q&A questions moved and archived.",
++	})
++
++	UsersVettedTotal = prometheus.NewCounter(prometheus.CounterOpts{
++		Name: "tbd_bot_users_vetted_total",
++		Help: "Total number of users successfully vetted.",
++	})
++
++	TSUsersVettedTotal = prometheus.NewCounter(prometheus.CounterOpts{
++		Name: "tbd_bot_ts_users_vetted_total",
++		Help: "Total number of Terra Sancta users successfully vetted.",
++	})
++
++	CronExecutionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
++		Name: "tbd_bot_cron_executions_total",
++		Help: "Total number of cron job executions.",
++	}, []string{"cron_name"})
++
++	CMActionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
++		Name: "tbd_bot_cm_actions_total",
++		Help: "Total number of CM actions performed.",
++	}, []string{"action"})
++
++	MessagesProcessedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
++		Name: "tbd_bot_messages_processed_total",
++		Help: "Total number of messages processed.",
++	}, []string{"handler"})
++
++	ComponentInteractionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
++		Name: "tbd_bot_component_interactions_total",
++		Help: "Total number of component interactions.",
++	}, []string{"component"})
++
++	HandlerDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
++		Name:    "tbd_bot_handler_duration_seconds",
++		Help:    "Histogram of handler execution durations in seconds.",
++		Buckets: prometheus.DefBuckets,
++	}, []string{"handler", "status"})
++
++	HandlerRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
++		Name: "tbd_bot_handler_requests_total",
++		Help: "Total number of handler requests processed.",
++	}, []string{"handler", "status"})
++
++	registerOnce sync.Once
++)
++
++// InitMetrics registers custom Prometheus metrics with the default registerer.
++func InitMetrics() {
++	registerOnce.Do(func() {
++		prometheus.MustRegister(QAMovesTotal)
++		prometheus.MustRegister(UsersVettedTotal)
++		prometheus.MustRegister(TSUsersVettedTotal)
++		prometheus.MustRegister(CronExecutionsTotal)
++		prometheus.MustRegister(CMActionsTotal)
++		prometheus.MustRegister(MessagesProcessedTotal)
++		prometheus.MustRegister(ComponentInteractionsTotal)
++		prometheus.MustRegister(HandlerDuration)
++		prometheus.MustRegister(HandlerRequestsTotal)
++	})
++}
++
++func init() {
++	InitMetrics()
++}
++
++// IncQAMoves increments the tbd_bot_qa_moves_total counter by 1.
++func IncQAMoves() {
++	QAMovesTotal.Inc()
++}
++
++// IncUsersVetted increments the tbd_bot_users_vetted_total counter by 1.
++func IncUsersVetted() {
++	UsersVettedTotal.Inc()
++}
++
++// IncTSUsersVetted increments the tbd_bot_ts_users_vetted_total counter by 1.
++func IncTSUsersVetted() {
++	TSUsersVettedTotal.Inc()
++}
++
++// IncCronExecutions increments the tbd_bot_cron_executions_total counter for a given cron_name.
++func IncCronExecutions(cronName string) {
++	CronExecutionsTotal.WithLabelValues(cronName).Inc()
++}
++
++// IncCMActions increments the tbd_bot_cm_actions_total counter for a given action.
++func IncCMActions(action string) {
++	CMActionsTotal.WithLabelValues(action).Inc()
++}
++
++// IncMessagesProcessed increments the tbd_bot_messages_processed_total counter for a given handler.
++func IncMessagesProcessed(handlerName string) {
++	MessagesProcessedTotal.WithLabelValues(handlerName).Inc()
++}
++
++// IncComponentInteractions increments the tbd_bot_component_interactions_total counter for a given component.
++func IncComponentInteractions(component string) {
++	ComponentInteractionsTotal.WithLabelValues(component).Inc()
++}
++
++// RecordHandlerExecution observes latency and increments request total counter for a handler.
++func RecordHandlerExecution(handlerName string, startTime time.Time, err error) {
++	status := "success"
++	if err != nil {
++		status = "error"
++	}
++	duration := time.Since(startTime).Seconds()
++	HandlerDuration.WithLabelValues(handlerName, status).Observe(duration)
++	HandlerRequestsTotal.WithLabelValues(handlerName, status).Inc()
++}
++
++// DecorateInteractionHandler wraps an interaction command handler returning an error with RED metrics observation.
++func DecorateInteractionHandler(name string, fn func(s *discordgo.Session, i *discordgo.InteractionCreate) error) func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
++	return func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
++		start := time.Now()
++		err := fn(s, i)
++		RecordHandlerExecution(name, start, err)
++		return err
++	}
++}
++
++// DecorateEventHandler wraps a Discord event handler function with RED metrics observation.
++func DecorateEventHandler[T any](name string, fn func(s *discordgo.Session, event T)) func(s *discordgo.Session, event T) {
++	return func(s *discordgo.Session, event T) {
++		start := time.Now()
++		fn(s, event)
++		RecordHandlerExecution(name, start, nil)
++	}
++}
+diff --git a/util/metrics_test.go b/util/metrics_test.go
+new file mode 100644
+index 0000000..e8b2e3f
+--- /dev/null
++++ b/util/metrics_test.go
+@@ -0,0 +1,152 @@
++package util_test
++
++import (
++	"errors"
++	"testing"
++
++	"github.com/bwmarrin/discordgo"
++	"github.com/christiansoetanto/tbd-bot/util"
++	"github.com/prometheus/client_golang/prometheus"
++	"github.com/prometheus/client_golang/prometheus/testutil"
++)
++
++func TestBusinessMetricsRegistered(t *testing.T) {
++	// Verify QAMovesTotal is registered and increments correctly
++	beforeQA := testutil.ToFloat64(util.QAMovesTotal)
++	util.IncQAMoves()
++	afterQA := testutil.ToFloat64(util.QAMovesTotal)
++	if afterQA-beforeQA != 1 {
++		t.Fatalf("expected QAMovesTotal to increment by 1, got before=%f, after=%f", beforeQA, afterQA)
++	}
++
++	// Verify UsersVettedTotal is registered and increments correctly
++	beforeVetted := testutil.ToFloat64(util.UsersVettedTotal)
++	util.IncUsersVetted()
++	afterVetted := testutil.ToFloat64(util.UsersVettedTotal)
++	if afterVetted-beforeVetted != 1 {
++		t.Fatalf("expected UsersVettedTotal to increment by 1, got before=%f, after=%f", beforeVetted, afterVetted)
++	}
++
++	// Gather metrics from default gatherer and verify metric names exist
++	metricFamilies, err := prometheus.DefaultGatherer.Gather()
++	if err != nil {
++		t.Fatalf("failed to gather metrics: %v", err)
++	}
++
++	foundQA := false
++	foundVetted := false
++	for _, mf := range metricFamilies {
++		if mf.GetName() == "tbd_bot_qa_moves_total" {
++			foundQA = true
++		}
++		if mf.GetName() == "tbd_bot_users_vetted_total" {
++			foundVetted = true
++		}
++	}
++
++	if !foundQA {
++		t.Errorf("metric tbd_bot_qa_moves_total not found in default gatherer")
++	}
++	if !foundVetted {
++		t.Errorf("metric tbd_bot_users_vetted_total not found in default gatherer")
++	}
++}
++
++func TestREDMetricsDecorators(t *testing.T) {
++	// Test DecorateInteractionHandler with success
++	dummySuccessInteraction := util.DecorateInteractionHandler("test_interaction_success", func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
++		return nil
++	})
++	err := dummySuccessInteraction(nil, nil)
++	if err != nil {
++		t.Fatalf("expected nil error, got %v", err)
++	}
++
++	// Test DecorateInteractionHandler with error
++	dummyErrorInteraction := util.DecorateInteractionHandler("test_interaction_error", func(s *discordgo.Session, i *discordgo.InteractionCreate) error {
++		return errors.New("something went wrong")
++	})
++	err = dummyErrorInteraction(nil, nil)
++	if err == nil {
++		t.Fatalf("expected error, got nil")
++	}
++
++	// Test DecorateEventHandler
++	dummyEvent := util.DecorateEventHandler("test_event", func(s *discordgo.Session, m *discordgo.MessageCreate) {
++		// do nothing
++	})
++	dummyEvent(nil, nil)
++
++	// Gather metrics and verify RED metrics presence
++	metricFamilies, err := prometheus.DefaultGatherer.Gather()
++	if err != nil {
++		t.Fatalf("failed to gather metrics: %v", err)
++	}
++
++	foundDuration := false
++	foundRequests := false
++	for _, mf := range metricFamilies {
++		if mf.GetName() == "tbd_bot_handler_duration_seconds" {
++			foundDuration = true
++		}
++		if mf.GetName() == "tbd_bot_handler_requests_total" {
++			foundRequests = true
++		}
++	}
++
++	if !foundDuration {
++		t.Errorf("metric tbd_bot_handler_duration_seconds not found in default gatherer")
++	}
++	if !foundRequests {
++		t.Errorf("metric tbd_bot_handler_requests_total not found in default gatherer")
++	}
++
++	// Check specific counter values using testutil
++	successCount := testutil.ToFloat64(util.HandlerRequestsTotal.WithLabelValues("test_interaction_success", "success"))
++	if successCount != 1 {
++		t.Errorf("expected 1 success count for test_interaction_success, got %f", successCount)
++	}
++
++	errorCount := testutil.ToFloat64(util.HandlerRequestsTotal.WithLabelValues("test_interaction_error", "error"))
++	if errorCount != 1 {
++		t.Errorf("expected 1 error count for test_interaction_error, got %f", errorCount)
++	}
++
++	eventCount := testutil.ToFloat64(util.HandlerRequestsTotal.WithLabelValues("test_event", "success"))
++	if eventCount != 1 {
++		t.Errorf("expected 1 success count for test_event, got %f", eventCount)
++	}
++}
++
++func TestAllExpandedBusinessMetrics(t *testing.T) {
++	util.IncCronExecutions("test_cron")
++	util.IncTSUsersVetted()
++	util.IncCMActions("test_action")
++	util.IncMessagesProcessed("test_msg")
++	util.IncComponentInteractions("test_component")
++
++	metricFamilies, err := prometheus.DefaultGatherer.Gather()
++	if err != nil {
++		t.Fatalf("failed to gather metrics: %v", err)
++	}
++
++	expectedMetrics := map[string]bool{
++		"tbd_bot_cron_executions_total":        false,
++		"tbd_bot_ts_users_vetted_total":        false,
++		"tbd_bot_cm_actions_total":             false,
++		"tbd_bot_messages_processed_total":     false,
++		"tbd_bot_component_interactions_total": false,
++	}
++
++	for _, mf := range metricFamilies {
++		if _, ok := expectedMetrics[mf.GetName()]; ok {
++			expectedMetrics[mf.GetName()] = true
++		}
++	}
++
++	for name, found := range expectedMetrics {
++		if !found {
++			t.Errorf("metric %s not found in default gatherer", name)
++		}
++	}
++}
+diff --git a/util/reporter.go b/util/reporter.go
+index a5e4c54..c7d8682 100644
+--- a/util/reporter.go
++++ b/util/reporter.go
+@@ -1,2 +1 @@
+ package util
+-

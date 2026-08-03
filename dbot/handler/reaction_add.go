@@ -172,5 +172,6 @@ func archiveQuestion(ctx context.Context, s *discordgo.Session, answers answersM
 		return err
 	}
 
+	util.IncQAMoves()
 	return nil
 }

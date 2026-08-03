@@ -29,6 +29,7 @@ func (h *handler) vettingQuestioningKeywordDetectionHandler(ctx context.Context)
 			channelId != m.ChannelID {
 			return
 		}
+		util.IncMessagesProcessed("vetting_questioning_keyword")
 		keyword := setting.Keyword
 		if strings.Contains(util.ToAlphanumAndSpace(m.Content), keyword) {
 			title := setting.Title
@@ -105,6 +106,7 @@ func (h *handler) invalidVettingResponseHandler(ctx context.Context) func(s *dis
 			channelId != m.ChannelID {
 			return
 		}
+		util.IncMessagesProcessed("invalid_vetting_response")
 
 		if !isValidVettingResponse(ctx, m.Content, setting) {
 			content := fmt.Sprintf("Hey <@%s>! It looks like you missed question 1. Please re-read the <#%s> again, we assure you that the code is in there. Thank you for your understanding.", m.Author.ID, cfg.Channel.RulesVetting)
@@ -135,6 +137,7 @@ func (h *handler) cmQuestionLimiterHandler(ctx context.Context) func(s *discordg
 			channelId != m.ChannelID {
 			return
 		}
+		util.IncMessagesProcessed("cm_question_limiter")
 		if setting.UnlimitedRoleIds == nil {
 			logv2.Error(ctx, fmt.Errorf("unlimited role ids is nil"))
 			return
