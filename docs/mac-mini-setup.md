@@ -86,6 +86,7 @@ To protect your Discord token from malicious pull requests, the `.env` file is i
    | `GITHUBAPITOKEN` | GitHub API token used by the Office of Readings cron | Required for that cron. |
    | `GOMEMLIMIT` | Go soft memory limit | `200MiB`, kept under the 256M container limit. |
    | `GF_SECURITY_ADMIN_PASSWORD` | Grafana admin password | Choose a real password; the compose default is `admin`. |
+   | `GRAFANA_DISCORD_WEBHOOK_URL` | Discord webhook Grafana posts alerts to | Required for alerting. Grafana has no `env_file`, so this reaches it only by `${...}` interpolation from the repo `.env` that `deploy.yml` copies from this file — if unset it resolves to an empty string and alerts provision cleanly but go nowhere. |
 
    Copy the current values from the Azure App Service configuration for
    `tbdbot-cicd` so the new deployment points at the same Discord bot and the same

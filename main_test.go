@@ -592,4 +592,17 @@ func TestDeployWorkflow(t *testing.T) {
 			t.Errorf("deploy.yml missing required constraint substring: %q", sub)
 		}
 	}
+
+	// The compose command must stay service-less. Narrowing it to
+	// "... --build tbd-bot" still deploys the bot, so nothing looks broken,
+	// but Grafana never gets recreated and the alerting provisioning in
+	// grafana/provisioning/alerting/ only ever exists on whichever machine
+	// last ran compose by hand.
+	upCmd := regexp.MustCompile(`docker compose up -d --build(.*)`).FindStringSubmatch(content)
+	if upCmd == nil {
+		t.Fatal("deploy.yml has no `docker compose up -d --build` command")
+	}
+	if strings.TrimSpace(upCmd[1]) != "" {
+		t.Errorf("deploy.yml limits the deploy to %q; it must recreate the whole stack so Grafana picks up alerting provisioning", strings.TrimSpace(upCmd[1]))
+	}
 }

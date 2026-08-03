@@ -50,10 +50,18 @@ webhook. A webhook is used instead of email because it needs no credentials, is 
 spam filtering, and does not depend on `BOTTOKEN` or on the bot process — so it still delivers
 when the bot itself is what is down.
 
-Set `GRAFANA_DISCORD_WEBHOOK_URL` in `.env` (Discord: Server Settings → Integrations → Webhooks).
-Point it at a channel only you can read and set that channel to "All Messages" for a phone push.
-The URL is a credential — anyone holding it can post to that channel — so it is read from the
-environment and never committed.
+Set `GRAFANA_DISCORD_WEBHOOK_URL` in **`~/tbd-bot-secrets/.env`** (Discord: Server Settings →
+Integrations → Webhooks). Point it at a channel only you can read and set that channel to
+"All Messages" for a phone push. The URL is a credential — anyone holding it can post to that
+channel — so it is read from the environment and never committed.
+
+Which file matters: `deploy.yml` runs `cp ~/tbd-bot-secrets/.env .env` before composing, so the
+secrets file is canonical and the repo `.env` is a deploy artefact. Compose only ever reads the
+repo `.env` — it has no knowledge of the secrets file — so if you run compose by hand without
+that copy, the repo `.env` must carry the value too. Grafana is the unforgiving case: it has no
+`env_file` and receives the URL purely through `${GRAFANA_DISCORD_WEBHOOK_URL}` interpolation,
+which silently resolves to an empty string when unset. Alerting then provisions cleanly and
+delivers nowhere.
 
 Three rules fire into it:
 
