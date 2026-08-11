@@ -4,3 +4,18 @@
 
 # Ignore version control files
 .git
+
+# Docs, IDE metadata and monitoring config the bot image never reads. None of
+# these reach `go build`, `go test`, or the compiled binary at runtime, so
+# editing only these must not invalidate the `COPY . .` layer and restart the
+# live Discord bot on deploy.
+docs
+*.md
+grafana
+prometheus
+.idea
+tbd-bot.iml
+
+# Stale tracked binary; rebuilt by `go build -o tbd-bot .` in the builder
+# stage and never read from the source tree.
+/tbd-bot
