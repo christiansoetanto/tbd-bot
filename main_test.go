@@ -865,12 +865,15 @@ func TestDockerignoreExcludesDocsButKeepsGoBuildInputs(t *testing.T) {
 	tracked := strings.Fields(string(out))
 
 	for _, f := range tracked {
-		isDoc := strings.HasSuffix(f, ".md") || strings.HasPrefix(f, "docs/")
-		if !isDoc {
+		isNonBuildInput := strings.HasSuffix(f, ".md") ||
+			strings.HasPrefix(f, "docs/") ||
+			strings.HasPrefix(f, "grafana/") ||
+			strings.HasPrefix(f, "prometheus/")
+		if !isNonBuildInput {
 			continue
 		}
 		if !anyDockerignorePatternMatches(patterns, f) {
-			t.Errorf(".dockerignore does not exclude documentation file %q; a doc-only commit would still invalidate the build context and restart the bot", f)
+			t.Errorf(".dockerignore does not exclude %q; a commit touching only docs/grafana/prometheus would still invalidate the build context and restart the bot", f)
 		}
 	}
 
