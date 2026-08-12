@@ -246,7 +246,7 @@ curl -s localhost:8080/metrics | head
 curl -s 'localhost:9090/api/v1/targets' | grep -o '"health":"[^"]*"'
 
 # Grafana: log in and confirm the dashboard loaded and its panels have data.
-open http://127.0.0.1:3000
+open http://127.0.0.1:9400
 ```
 
 Confirm the bot is back online in Discord and answers one slash command. Since this is
