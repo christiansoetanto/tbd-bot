@@ -4,3 +4,17 @@
 
 # Ignore version control files
 .git
+
+# Docs and monitoring config the bot image never reads. None of these reach
+# `go build`, `go test`, or the compiled binary at runtime, so editing only
+# these must not invalidate the `COPY . .` layer and restart the live
+# Discord bot on deploy. grafana/ and prometheus/ are bind-mounted into
+# their own containers by docker-compose.yml, never copied into this image.
+docs
+*.md
+grafana
+prometheus
+
+# Stale tracked binary (21MB); rebuilt by `go build -o tbd-bot .` in the
+# builder stage and never read from the source tree.
+/tbd-bot

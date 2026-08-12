@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -805,5 +806,84 @@ func TestDeployWorkflowReloadsGrafanaProvisioning(t *testing.T) {
 	// deploy to pick up a Grafana-only change.
 	if strings.Contains(workflow, "docker compose restart\n") || strings.Contains(workflow, "docker compose restart tbd-bot") {
 		t.Error("deploy.yml restarts more than Grafana; a provisioning change must not cost bot downtime")
+	}
+}
+
+// dockerignoreMatches reimplements the directory-prefix semantics dockerd
+// uses for plain (non-**) .dockerignore patterns: a pattern excludes a path
+// if its components glob-match a PREFIX of the path's components, so "docs"
+// (one component) excludes the whole subtree, while "*.md" (also one
+// component) only ever matches root-level files, never nested ones.
+func dockerignoreMatches(pattern, path string) bool {
+	patParts := strings.Split(strings.Trim(pattern, "/"), "/")
+	pathParts := strings.Split(path, "/")
+	if len(patParts) > len(pathParts) {
+		return false
+	}
+	for i, p := range patParts {
+		if ok, err := filepath.Match(p, pathParts[i]); err != nil || !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func anyDockerignorePatternMatches(patterns []string, path string) bool {
+	for _, pattern := range patterns {
+		if dockerignoreMatches(pattern, path) {
+			return true
+		}
+	}
+	return false
+}
+
+// deploy.yml runs `docker compose up -d --build` on every push to master
+// with no path filter, and Dockerfile:14 is `COPY . .`, so anything left in
+// the build context that changes invalidates that layer and restarts the
+// live bot. This test pins both directions of .dockerignore: docs and
+// markdown must stay excluded (the regression this guards), and no pattern
+// may reach a file the Go build actually needs, since that would silently
+// ship a broken image.
+func TestDockerignoreExcludesDocsButKeepsGoBuildInputs(t *testing.T) {
+	ignoreBytes, err := os.ReadFile(".dockerignore")
+	if err != nil {
+		t.Fatalf("failed to read .dockerignore: %v", err)
+	}
+	var patterns []string
+	for _, line := range strings.Split(string(ignoreBytes), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		patterns = append(patterns, line)
+	}
+
+	out, err := exec.Command("git", "ls-files").Output()
+	if err != nil {
+		t.Fatalf("git ls-files failed: %v", err)
+	}
+	tracked := strings.Fields(string(out))
+
+	for _, f := range tracked {
+		isNonBuildInput := strings.HasSuffix(f, ".md") ||
+			strings.HasPrefix(f, "docs/") ||
+			strings.HasPrefix(f, "grafana/") ||
+			strings.HasPrefix(f, "prometheus/")
+		if !isNonBuildInput {
+			continue
+		}
+		if !anyDockerignorePatternMatches(patterns, f) {
+			t.Errorf(".dockerignore does not exclude %q; a commit touching only docs/grafana/prometheus would still invalidate the build context and restart the bot", f)
+		}
+	}
+
+	for _, f := range tracked {
+		isBuildInput := f == "go.mod" || f == "go.sum" || strings.HasSuffix(f, ".go")
+		if !isBuildInput {
+			continue
+		}
+		if anyDockerignorePatternMatches(patterns, f) {
+			t.Errorf(".dockerignore excludes %q, which `go build -o tbd-bot .` needs; the image would fail to build on deploy", f)
+		}
 	}
 }
